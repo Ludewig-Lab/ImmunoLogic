@@ -9,7 +9,7 @@
 #' @param cor_matrix Optional correlation matrix if \code{data} is not given.
 #' @param p_matrix Optional matrix of p-values.
 #' @param correlation_type Type of correlation to compute (\code{"pearson"},
-#'   \code{"spearman"}, or \code{"kendall"}).
+#'  or \code{"spearman"}).
 #' @param method Method passed to \code{corrplot::corrplot()} (e.g. "ellipse").
 #' @param sig.level Significance threshold for highlighting.
 #' @param order Variable ordering method.

@@ -19,6 +19,7 @@
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
 #' @param n_variable_genes Number of top variable genes to use if `selGenes` is `NULL`. Default is `20`.
 #' @param ... Additional parameters passed to `pheatmap::pheatmap()`.
+#' @author Mechthild Lütge, Roman Stadler
 #'
 #' @return A `pheatmap` object.
 #'

@@ -77,3 +77,6 @@ data <- data.frame(
 result <- fit_mmlt_flexible(data, automatic = TRUE)
 }
 }
+\author{
+Roman Stadler
+}

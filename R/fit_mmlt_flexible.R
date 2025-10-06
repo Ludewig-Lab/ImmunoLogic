@@ -16,6 +16,7 @@
 #' @param order Polynomial order for the Box–Cox basis.
 #' @param automatic Logical. If `TRUE`, classify variables automatically.
 #' @param auto_threshold Integer. Threshold for automatic discrete classification (default = 5).
+#' @author Roman Stadler
 #'
 #' @return A list containing:
 #'   \item{object}{The fitted MMLT model.}

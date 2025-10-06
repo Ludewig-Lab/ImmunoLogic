@@ -60,3 +60,6 @@ data(mtcars)
 plot_correlation_matrix(mtcars)
 }
 }
+\author{
+Roman Stadler
+}

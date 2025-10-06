@@ -79,3 +79,6 @@ avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
 }
 
 }
+\author{
+Mechthild Lütge, Roman Stadler
+}

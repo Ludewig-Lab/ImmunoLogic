@@ -16,6 +16,7 @@
 #' @param ... Additional arguments.
 #'
 #' @return Invisibly returns a data frame with coordinates and p-values.
+#' @author Roman Stadler
 #' @export
 #'
 #' @examples

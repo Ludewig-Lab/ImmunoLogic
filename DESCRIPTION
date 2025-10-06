@@ -14,5 +14,8 @@ Imports:
     corrplot,
     Hmisc,
     mice,
+    qrng,
+    stats,
     stringr,
+    tram,
     viridis

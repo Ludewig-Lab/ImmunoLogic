@@ -196,7 +196,7 @@ fit_mmlt_flexible <- function(dataframe,
   }
 
   # Specify Optimizers
-  op <- tram::mltoptim()[1:3] # Order: auglag, spg, nloptr
+  op <- mltoptim()[1:3] # Order: auglag, spg, nloptr
 
   cat("\n--- Marginal Model Fitting ---\n")
   cat("Marginal formula:", marginal_formula, "\n")

@@ -52,14 +52,14 @@ plot_correlation_matrix <- function(data = NULL,
     stop("Please install 'Hmisc', 'corrplot' and 'viridis'.")
   }
 
-  if (!requireNamespace("biostatUZH", quietly = TRUE)) {
-    stop(
-      "Package 'biostatUZH' is required for p-value formatting.\n",
-      "Install it with one of the following:\n",
-      "  remotes::install_github(\"EBPI-Biostatistics/biostatUZH\")\n",
-      "  install.packages(\"biostatUZH\", repos = \"http://R-Forge.R-project.org\")"
-    )
-  }
+  # if (!requireNamespace("biostatUZH", quietly = TRUE)) {
+  #   stop(
+  #     "Package 'biostatUZH' is required for p-value formatting.\n",
+  #     "Install it with one of the following:\n",
+  #     "  remotes::install_github(\"EBPI-Biostatistics/biostatUZH\")\n",
+  #     "  install.packages(\"biostatUZH\", repos = \"http://R-Forge.R-project.org\")"
+  #   )
+  # }
 
   # Helper function to clean variable names
   clean_variable_names <- function(names) {

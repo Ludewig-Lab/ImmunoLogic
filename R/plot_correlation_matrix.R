@@ -110,6 +110,20 @@ plot_correlation_matrix <- function(data = NULL,
       if (verbose) cat("Imputation completed\n")
     }
 
+    # Warn if there are non-numeric columns (categorical data)
+    non_numeric_cols <- names(data)[!sapply(data, is.numeric)]
+    if (length(non_numeric_cols) > 0) {
+      warning(
+        paste0(
+          "The following columns are non-numeric and will be excluded from the correlation plot: ",
+          paste(non_numeric_cols, collapse = ", "),
+          "\nPlease check your data or convert these columns if correlations are desired."
+        ),
+        call. = FALSE
+      )
+      data <- data[, sapply(data, is.numeric), drop = FALSE]
+    }
+
     cor_results <- Hmisc::rcorr(as.matrix(data), type=correlation_type)
     cor_matrix <- cor_results$r
     p_matrix <- cor_results$P

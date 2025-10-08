@@ -47,7 +47,8 @@ avgHeatmap(
 \item{color_palette}{Color vector for the heatmap. Default is a blue-white-red gradient.}
 
 \item{annotation_colors}{Named list or named vector of colors for annotations.
-If a named vector is provided, it will be automatically wrapped as \code{list(Group = your_vector)}.}
+If a named vector is provided, it will be automatically wrapped as \code{list(Group = your_vector)}.
+The vector should be named with group levels, or have length matching the number of groups.}
 
 \item{gaps_row}{Optional vector specifying rows after which to insert gaps. Default is \code{NULL}.}
 
@@ -76,7 +77,17 @@ If no genes are provided, the top variable features will be used.
 \dontrun{
 library(Seurat)
 seurat <- YourSeuratObject
+
+# Using default colors
 avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
+
+# Using custom colors (named vector)
+my_colors <- c("Cluster0" = "#FF0000", "Cluster1" = "#00FF00")
+avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
+
+# Using custom colors (unnamed vector - will be matched to groups in order)
+my_colors <- c("#FF0000", "#00FF00", "#0000FF")
+avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
 }
 
 }

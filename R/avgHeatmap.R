@@ -6,20 +6,20 @@
 #' @param seurat A Seurat object.
 #' @param selGenes Character vector of genes to plot, or a data.frame with a column named `gene` or `geneID`. Defaults to `NULL`.
 #' @param group_by Metadata column in the Seurat object to group cells by. Defaults to `NULL` (uses active identity).
-#' @param scale_method Scaling method for the heatmap: "row", "column", or "none". Default is `"row"`.
+#' @param scale_method Scaling method for the heatmap: `"row"`, `"column"`, or `"none"`. Default is `"row"`.
 #' @param cluster_rows Logical, whether to cluster rows. Default is `FALSE`.
 #' @param cluster_cols Logical, whether to cluster columns. Default is `FALSE`.
 #' @param show_rownames Logical, whether to display row names (genes). Default is `TRUE`.
 #' @param show_colnames Logical, whether to display column names (groups). Default is `TRUE`.
-#' @param cellwidth Width of each cell in the heatmap. Default is `15`.
-#' @param cellheight Height of each cell in the heatmap. Default is `10`.
+#' @param cellwidth Numeric, width of each cell in the heatmap. Default is `15`.
+#' @param cellheight Numeric, height of each cell in the heatmap. Default is `10`.
 #' @param color_palette Color vector for the heatmap. Default is a blue-white-red gradient.
-#' @param annotation_colors Named list of colors for annotations. Default is automatically chosen based on groups.
+#' @param annotation_colors Named list or named vector of colors for annotations.
+#'   If a named vector is provided, it will be automatically wrapped as `list(Group = your_vector)`.
 #' @param gaps_row Optional vector specifying rows after which to insert gaps. Default is `NULL`.
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
 #' @param n_variable_genes Number of top variable genes to use if `selGenes` is `NULL`. Default is `20`.
-#' @param ... Additional parameters passed to `pheatmap::pheatmap()`.
-#' @author Mechthild Lütge, Roman Stadler
+#' @param ... Additional arguments passed to [pheatmap::pheatmap()].
 #'
 #' @return A `pheatmap` object.
 #'
@@ -181,7 +181,20 @@ avgHeatmap <- function(seurat,
   # Set default color palette
   if (is.null(color_palette)) {
     color_palette <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(50)
+  } else {
+    # If user provided a named vector, wrap it in a list
+    if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
+      message("Wrapping annotation_colors vector into list(Group = ...)")
+      annotation_colors <- list(Group = annotation_colors)
+    }
+
+    # If list provided but names don't match, try to fix gracefully
+    if (!"Group" %in% names(annotation_colors)) {
+      annotation_colors <- list(Group = annotation_colors[[1]])
+    }
   }
+
+
 
   # Create annotation for columns (cell types/groups)
   annotation_col <- data.frame(

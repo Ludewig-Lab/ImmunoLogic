@@ -30,7 +30,7 @@ avgHeatmap(
 
 \item{group_by}{Metadata column in the Seurat object to group cells by. Defaults to \code{NULL} (uses active identity).}
 
-\item{scale_method}{Scaling method for the heatmap: "row", "column", or "none". Default is \code{"row"}.}
+\item{scale_method}{Scaling method for the heatmap: \code{"row"}, \code{"column"}, or \code{"none"}. Default is \code{"row"}.}
 
 \item{cluster_rows}{Logical, whether to cluster rows. Default is \code{FALSE}.}
 
@@ -40,13 +40,14 @@ avgHeatmap(
 
 \item{show_colnames}{Logical, whether to display column names (groups). Default is \code{TRUE}.}
 
-\item{cellwidth}{Width of each cell in the heatmap. Default is \code{15}.}
+\item{cellwidth}{Numeric, width of each cell in the heatmap. Default is \code{15}.}
 
-\item{cellheight}{Height of each cell in the heatmap. Default is \code{10}.}
+\item{cellheight}{Numeric, height of each cell in the heatmap. Default is \code{10}.}
 
 \item{color_palette}{Color vector for the heatmap. Default is a blue-white-red gradient.}
 
-\item{annotation_colors}{Named list of colors for annotations. Default is automatically chosen based on groups.}
+\item{annotation_colors}{Named list or named vector of colors for annotations.
+If a named vector is provided, it will be automatically wrapped as \code{list(Group = your_vector)}.}
 
 \item{gaps_row}{Optional vector specifying rows after which to insert gaps. Default is \code{NULL}.}
 
@@ -54,7 +55,7 @@ avgHeatmap(
 
 \item{n_variable_genes}{Number of top variable genes to use if \code{selGenes} is \code{NULL}. Default is \code{20}.}
 
-\item{...}{Additional parameters passed to \code{pheatmap::pheatmap()}.}
+\item{...}{Additional arguments passed to \code{\link[pheatmap:pheatmap]{pheatmap::pheatmap()}}.}
 }
 \value{
 A \code{pheatmap} object.
@@ -78,7 +79,4 @@ seurat <- YourSeuratObject
 avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
 }
 
-}
-\author{
-Mechthild Lütge, Roman Stadler
 }

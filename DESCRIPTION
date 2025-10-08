@@ -17,4 +17,7 @@ Imports:
     stats,
     stringr,
     tram,
-    viridis
+    viridis,
+    Seurat,
+    dplyr,
+    pheatmap

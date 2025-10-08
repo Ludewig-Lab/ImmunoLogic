@@ -36,7 +36,7 @@ are computed automatically.}
 \item{p_matrix}{Optional matrix of p-values.}
 
 \item{correlation_type}{Type of correlation to compute (\code{"pearson"},
-\code{"spearman"}, or \code{"kendall"}).}
+or \code{"spearman"}).}
 
 \item{method}{Method passed to \code{corrplot::corrplot()} (e.g. "ellipse").}
 

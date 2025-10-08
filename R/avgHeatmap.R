@@ -208,19 +208,31 @@ avgHeatmap <- function(seurat,
   # Set default annotation colors if not provided
   if (is.null(annotation_colors)) {
     # Define nice color palettes
-    nice_colors <- c("#67001f", "#D53E4F", "#f4a582", "#FEE08B", "#003c30", "#01665e",
-                     "#66C2A5", "#3288BD", "#BEAED4", "#c7eae5", "#355C7D", "#202547",
-                     "#B45B5C", "#8c510a")
 
     disease_colors <- c("#dfc27d", "#BE3144", "#202547", "#355C7D", "#779d8d")
 
     fibroblast_colors <- c("#D53E4F", "#f4a582", "#ff7b7b", "#8e0b00", "#FEE08B",
                            "#42090D", "#FF7B00", "#FFF4DF")
 
+    nice_colors <- c("#67001f", "#D53E4F", "#f4a582", "#FEE08B", "#003c30", "#01665e",
+                     "#66C2A5", "#3288BD", "#BEAED4", "#c7eae5", "#355C7D", "#202547",
+                     "#B45B5C", "#8c510a")
+
+
     extended_colors <- c("#fde0dd", "#fa9fb5", "#d95f0e", "#dd1c77", "#D53E4F",
                          "#f4a582", "#FEE08B", "#f03b20", "#ffffcc", "#43a2ca",
                          "#1c9099", "#355C7D", "#3288BD", "#BEAED4", "#756bb1",
                          "#c7eae5")
+
+
+    large_palette <- c(
+      "#fde0dd", "#fa9fb5", "#f768a1", "#dd1c77", "#980043",  # pink–magenta
+      "#f4a582", "#fdae61", "#f46d43", "#d73027", "#a50026",  # orange–red
+      "#fee08b", "#ffffbf", "#e6f598", "#99d594", "#66c2a5",  # warm–green
+      "#43a2ca", "#1c9099", "#016c59", "#3288bd", "#5e4fa2",  # teal–blue–purple
+      "#beaed4", "#9e9ac8", "#756bb1", "#542788", "#3f007d",  # purple tones
+      "#c7eae5", "#a6bddb", "#74a9cf", "#3690c0", "#045a8d"   # cool blue range
+    )
 
     # Choose color palette based on group names and count
     if (n_groups <= 5 && any(grepl("healthy|explant|visit", groups_present, ignore.case = TRUE))) {
@@ -235,10 +247,14 @@ avgHeatmap <- function(seurat,
     } else if (n_groups <= 16) {
       # Extended colors for 15-16 groups
       group_colors <- extended_colors[1:n_groups]
+    } else if (n_groups <= 30) {
+      # Large palette for 17-30 groups
+      group_colors <- large_palette[1:n_groups]
     } else {
-      # For many groups, use extended palette + rainbow
-      group_colors <- c(extended_colors, rainbow(n_groups - length(extended_colors)))
+      # For very many groups (>30), use large palette + rainbow
+      group_colors <- c(large_palette, rainbow(n_groups - length(large_palette)))
     }
+
 
     names(group_colors) <- groups_present
     annotation_colors <- list(Group = group_colors)

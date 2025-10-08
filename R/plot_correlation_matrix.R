@@ -178,8 +178,6 @@ plot_correlation_matrix <- function(data = NULL,
   upper_triangle <- pos[pos$x + pos$y -1 > length(unique(pos$y)), ]
   upper_triangle
 
-
-  library(biostatUZH)
   upper_triangle$pval_text <- sapply(upper_triangle$pval, formatPval)
 
 
@@ -272,14 +270,14 @@ plot_correlation_matrix <- function(data = NULL,
     pval_legend_x_start <- legend_x_start + legend_width + 0.8
 
     # Create viridis color gradient
-    viridis_colors <- viridis(100)
+    viridis_colors <- rev(viridis(100))
 
     # Draw p-value legend rectangles
     for (i in 1:100) {
       y_pos <- legend_y_start - (i-1) * legend_step
       rect(pval_legend_x_start, y_pos - legend_step,
            pval_legend_x_start + legend_width, y_pos,
-           col = viridis_colors[101-i], border = NA)  # Reverse order so low p-values are at top
+           col = viridis_colors[i], border = NA)
     }
 
     # Add p-value legend labels and title
@@ -291,4 +289,3 @@ plot_correlation_matrix <- function(data = NULL,
   }
 
 }
-

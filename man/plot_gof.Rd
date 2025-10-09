@@ -44,11 +44,12 @@ Default is \code{FALSE}.}
 }
 \value{
 A list containing:
-\item{pvalmin}{Minimum p-value across all Kolmogorov-Smirnov tests, adjusted using
+\item{pvalmin}{Minimum p-value across all tests, adjusted using
 the beta distribution.}
 \item{pvalprod}{Product of all p-values, adjusted for multiple testing.}
-\item{individual_pvals}{Vector of individual KS test p-values for each dimension.}
-\item{transformed_data}{List of transformed uniform variates for each dimension.}
+\item{individual_pvals}{Named vector of individual test p-values for each dimension.}
+\item{test_types}{Named vector indicating which test was used ("KS" or "CvM") for each dimension.}
+\item{transformed_data}{Named list of transformed uniform variates for each dimension.}
 }
 \description{
 Creates diagnostic plots to assess the goodness of fit of a multivariate
@@ -68,8 +69,12 @@ For a J-dimensional model, it creates J plots showing:
 Under correct model specification, each transformed variate should follow a
 uniform distribution on \link{0,1}. Deviations indicate model misspecification.
 
-The function performs Kolmogorov-Smirnov tests comparing each transformed
-distribution to the uniform distribution. Two omnibus tests are reported:
+The function automatically detects ties in the transformed data (which occur with
+discrete or ordered variables) and uses the Cramér-von Mises test instead of the
+Kolmogorov-Smirnov test when ties are present. For continuous variables without
+ties, the standard KS test is used.
+
+Two omnibus tests are reported:
 \itemize{
 \item \strong{Minimum p-value test}: Tests whether the minimum p-value is
 suspiciously small (adjusted via beta distribution)

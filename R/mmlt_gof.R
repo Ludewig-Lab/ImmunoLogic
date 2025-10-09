@@ -24,11 +24,12 @@
 #'   Default is \code{FALSE}.
 #'
 #' @return A list containing:
-#'   \item{pvalmin}{Minimum p-value across all Kolmogorov-Smirnov tests, adjusted using
+#'   \item{pvalmin}{Minimum p-value across all tests, adjusted using
 #'     the beta distribution.}
 #'   \item{pvalprod}{Product of all p-values, adjusted for multiple testing.}
-#'   \item{individual_pvals}{Vector of individual KS test p-values for each dimension.}
-#'   \item{transformed_data}{List of transformed uniform variates for each dimension.}
+#'   \item{individual_pvals}{Named vector of individual test p-values for each dimension.}
+#'   \item{test_types}{Named vector indicating which test was used ("KS" or "CvM") for each dimension.}
+#'   \item{transformed_data}{Named list of transformed uniform variates for each dimension.}
 #'
 #' @details
 #' This function implements goodness-of-fit diagnostics based on Rosenblatt transformations.
@@ -41,8 +42,12 @@
 #' Under correct model specification, each transformed variate should follow a
 #' uniform distribution on [0,1]. Deviations indicate model misspecification.
 #'
-#' The function performs Kolmogorov-Smirnov tests comparing each transformed
-#' distribution to the uniform distribution. Two omnibus tests are reported:
+#' The function automatically detects ties in the transformed data (which occur with
+#' discrete or ordered variables) and uses the Cramér-von Mises test instead of the
+#' Kolmogorov-Smirnov test when ties are present. For continuous variables without
+#' ties, the standard KS test is used.
+#'
+#' Two omnibus tests are reported:
 #' \itemize{
 #'   \item \strong{Minimum p-value test}: Tests whether the minimum p-value is
 #'     suspiciously small (adjusted via beta distribution)
@@ -169,6 +174,7 @@ plot_gof <- function(new_data,
   # Storage for transformed distributions and p-values
   us <- vector("list", J)
   pvals <- numeric(J)
+  test_types <- character(J)  # Track which test was used
 
   # ============================================================================
   # Plot 1: Marginal distribution of first variable
@@ -181,7 +187,17 @@ plot_gof <- function(new_data,
                 type = "distribution")
   us[[1]] <- u1
   e1 <- ecdf(u1)
-  pvals[1] <- ks.test(u1, "punif")$p.value
+
+  # Check for ties and use appropriate test
+  has_ties_1 <- any(duplicated(u1))
+  if (has_ties_1) {
+    # Use Cramér-von Mises test for discrete data
+    pvals[1] <- cvm_test(u1)
+    test_types[1] <- "CvM"
+  } else {
+    pvals[1] <- suppressWarnings(ks.test(u1, "punif")$p.value)
+    test_types[1] <- "KS"
+  }
 
   var_name <- if (add_names) variable_names[1] else NULL
   plot_title <- get_title(1, var_name)
@@ -250,7 +266,16 @@ plot_gof <- function(new_data,
 
       us[[i]] <- u
       e <- ecdf(u)
-      pvals[i] <- ks.test(u, "punif")$p.value
+
+      # Check for ties and use appropriate test
+      has_ties <- any(duplicated(u))
+      if (has_ties) {
+        pvals[i] <- cvm_test(u)
+        test_types[i] <- "CvM"
+      } else {
+        pvals[i] <- suppressWarnings(ks.test(u, "punif")$p.value)
+        test_types[i] <- "KS"
+      }
 
       var_name <- if (add_names) variable_names[i] else NULL
       plot_title <- get_title(i, var_name)
@@ -297,7 +322,16 @@ plot_gof <- function(new_data,
 
   us[[J]] <- un
   e <- ecdf(un)
-  pvals[J] <- ks.test(un, "punif")$p.value
+
+  # Check for ties and use appropriate test
+  has_ties_J <- any(duplicated(un))
+  if (has_ties_J) {
+    pvals[J] <- cvm_test(un)
+    test_types[J] <- "CvM"
+  } else {
+    pvals[J] <- suppressWarnings(ks.test(un, "punif")$p.value)
+    test_types[J] <- "KS"
+  }
 
   var_name <- if (add_names) variable_names[J] else NULL
   plot_title <- get_title(J, var_name)
@@ -352,23 +386,27 @@ plot_gof <- function(new_data,
 
   if (status) {
     cat("\n=== Goodness-of-Fit Results ===\n")
-    cat("Individual KS test p-values:\n")
+    cat("Individual test p-values:\n")
     for (i in 1:J) {
-      cat(sprintf("  Dimension %d: %.4f\n", i, pvals[i]))
+      cat(sprintf("  Dimension %d (%s): %.4f\n", i, test_types[i], pvals[i]))
     }
     cat(sprintf("\nMinimum p-value (adjusted): %.4f\n", pvalmin))
     cat(sprintf("Product p-value (adjusted): %.4f\n", pvalprod))
+    cat("\nNote: KS = Kolmogorov-Smirnov test (continuous data)\n")
+    cat("      CvM = Cramér-von Mises test (discrete/tied data)\n")
     cat("================================\n")
   }
 
   # Return results
   names(pvals) <- variable_names
+  names(test_types) <- variable_names
   names(us) <- variable_names
 
   invisible(list(
     pvalmin = pvalmin,
     pvalprod = pvalprod,
     individual_pvals = pvals,
+    test_types = test_types,
     transformed_data = us
   ))
 }
@@ -431,4 +469,73 @@ clean_capitalize <- function(input_string) {
   clean_string <- gsub("[_.]", " ", input_string)
   capitalized_string <- gsub("\\b(\\w)", "\\U\\1", clean_string, perl = TRUE)
   return(capitalized_string)
+}
+
+################################################################################
+# Helper function for Cramér-von Mises test
+################################################################################
+
+#' Cramér-von Mises Test for Uniform Distribution
+#'
+#' Internal helper function to test whether data follows a uniform[0,1] distribution
+#' using the Cramér-von Mises test. This test is more appropriate than the
+#' Kolmogorov-Smirnov test when ties are present in the data (e.g., with discrete
+#' or ordered variables).
+#'
+#' @param x Numeric vector of observations to test.
+#'
+#' @return Numeric. P-value for the test.
+#' @keywords internal
+#'
+#' @details
+#' The Cramér-von Mises statistic is computed as:
+#' \deqn{W^2 = \sum_{i=1}^{n} (F_n(x_i) - (2i-1)/(2n))^2 + 1/(12n)}
+#' where \eqn{F_n} is the empirical CDF.
+#'
+#' P-values are approximated using the asymptotic distribution. For small samples
+#' (n < 8), results may be unreliable.
+
+cvm_test <- function(x) {
+  n <- length(x)
+
+  # Handle edge cases
+  if (n < 8) {
+    warning("Sample size too small for reliable Cramér-von Mises test (n < 8)")
+    return(NA)
+  }
+
+  # Sort the data
+  x_sorted <- sort(x)
+
+  # Compute CVM statistic
+  # W^2 = sum((F_n(x_i) - (2i-1)/(2n))^2) + 1/(12n)
+  i <- 1:n
+  expected_quantiles <- (2 * i - 1) / (2 * n)
+
+  # CVM statistic
+  W2 <- sum((x_sorted - expected_quantiles)^2) + 1 / (12 * n)
+
+  # Adjust for sample size
+  W2_adj <- W2 * (1 + 0.5 / n)
+
+  # Approximate p-value using asymptotic distribution
+  # Based on Anderson-Darling approximation for CVM statistic
+  # Reference: Anderson & Darling (1952), Stephens (1974)
+
+  if (W2_adj < 0.0275) {
+    pval <- 1 - exp(-13.953 + 775.5 * W2_adj - 12542.61 * W2_adj^2)
+  } else if (W2_adj < 0.051) {
+    pval <- 1 - exp(-5.903 + 179.546 * W2_adj - 1515.29 * W2_adj^2)
+  } else if (W2_adj < 0.092) {
+    pval <- exp(0.886 - 31.62 * W2_adj + 10.897 * W2_adj^2)
+  } else if (W2_adj < 0.1591) {
+    pval <- exp(1.111 - 34.242 * W2_adj + 12.832 * W2_adj^2)
+  } else {
+    pval <- exp(-W2_adj * (4.33 + W2_adj * 0.5))
+  }
+
+  # Ensure p-value is in [0, 1]
+  pval <- max(0, min(1, pval))
+
+  return(pval)
 }

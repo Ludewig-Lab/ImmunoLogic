@@ -20,6 +20,14 @@ avgHeatmap(
   gaps_row = NULL,
   gaps_col = NULL,
   n_variable_genes = 20,
+  colVecIdent = NULL,
+  colVecCond = NULL,
+  ordVec = NULL,
+  gapVecR = NULL,
+  gapVecC = NULL,
+  cc = NULL,
+  cr = NULL,
+  condCol = NULL,
   ...
 )
 }

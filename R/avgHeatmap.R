@@ -69,7 +69,60 @@ avgHeatmap <- function(seurat,
                        gaps_row = NULL,
                        gaps_col = NULL,
                        n_variable_genes = 20,
+                       # Old argument names for backward compatibility
+                       colVecIdent = NULL,
+                       colVecCond = NULL,
+                       ordVec = NULL,
+                       gapVecR = NULL,
+                       gapVecC = NULL,
+                       cc = NULL,
+                       cr = NULL,
+                       condCol = NULL,
                        ...) {
+
+  # ===========================================================================
+  # BACKWARD COMPATIBILITY: Map old arguments to new ones
+  # ===========================================================================
+
+  # Map colVecIdent to annotation_colors
+  if (!is.null(colVecIdent)) {
+    message("Note: 'colVecIdent' is deprecated. Please use 'annotation_colors' instead.")
+    if (is.null(annotation_colors)) {
+      annotation_colors <- colVecIdent
+    }
+  }
+
+  # Map gapVecR to gaps_row
+  if (!is.null(gapVecR)) {
+    message("Note: 'gapVecR' is deprecated. Please use 'gaps_row' instead.")
+    if (is.null(gaps_row)) {
+      gaps_row <- gapVecR
+    }
+  }
+
+  # Map gapVecC to gaps_col
+  if (!is.null(gapVecC)) {
+    message("Note: 'gapVecC' is deprecated. Please use 'gaps_col' instead.")
+    if (is.null(gaps_col)) {
+      gaps_col <- gapVecC
+    }
+  }
+
+  # Map cc to cluster_cols
+  if (!is.null(cc)) {
+    message("Note: 'cc' is deprecated. Please use 'cluster_cols' instead.")
+    cluster_cols <- cc
+  }
+
+  # Map cr to cluster_rows
+  if (!is.null(cr)) {
+    message("Note: 'cr' is deprecated. Please use 'cluster_rows' instead.")
+    cluster_rows <- cr
+  }
+
+  # ===========================================================================
+  # MAIN FUNCTION LOGIC
+  # ===========================================================================
 
   # Handle gene input - can be vector of gene names or data.frame with gene column
   # If no genes provided, use top variable features
@@ -165,6 +218,19 @@ avgHeatmap <- function(seurat,
   if (any(zero_var_genes)) {
     logNormExpresMa <- logNormExpresMa[!zero_var_genes, , drop = FALSE]
     warning(paste("Removed", sum(zero_var_genes), "genes with zero variance across groups"))
+  }
+
+  # Apply ordVec if provided (backward compatibility for column ordering)
+  if (!is.null(ordVec)) {
+    message("Note: 'ordVec' is deprecated but will be applied to reorder columns.")
+    # Only reorder columns that exist in the matrix
+    ordVec_valid <- ordVec[ordVec %in% colnames(logNormExpresMa)]
+    if (length(ordVec_valid) > 0) {
+      # Add any columns not in ordVec to the end
+      remaining_cols <- setdiff(colnames(logNormExpresMa), ordVec_valid)
+      final_order <- c(ordVec_valid, remaining_cols)
+      logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+    }
   }
 
   # Order genes to create "staircase" pattern - genes ordered by which cluster has highest expression

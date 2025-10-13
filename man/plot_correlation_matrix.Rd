@@ -24,7 +24,9 @@ plot_correlation_matrix(
   legend_height = 0.6,
   legend_x_start = 1,
   legend_y_start = 0.9,
-  legend_title_offset = 0.3
+  legend_title_offset = 0.3,
+  pval_color_low = NULL,
+  pval_color_high = NULL
 )
 }
 \arguments{
@@ -44,6 +46,10 @@ or \code{"spearman"}).}
 
 \item{order}{Variable ordering method.}
 
+\item{pval_color_low}{Color for low (significant) p-values. Default is NULL (uses viridis).}
+
+\item{pval_color_high}{Color for high (less significant) p-values. Default is NULL (uses viridis).}
+
 \item{...}{Additional arguments.}
 }
 \value{
@@ -57,7 +63,11 @@ significance highlighting, and legends for both correlations and p-values.
 \examples{
 \dontrun{
 data(mtcars)
+# Default viridis colors
 plot_correlation_matrix(mtcars)
+
+# Custom colors (e.g., white to purple)
+plot_correlation_matrix(mtcars, pval_color_low = "white", pval_color_high = "purple")
 }
 }
 \author{

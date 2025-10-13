@@ -13,6 +13,8 @@
 #' @param method Method passed to \code{corrplot::corrplot()} (e.g. "ellipse").
 #' @param sig.level Significance threshold for highlighting.
 #' @param order Variable ordering method.
+#' @param pval_color_low Color for low (significant) p-values. Default is NULL (uses viridis).
+#' @param pval_color_high Color for high (less significant) p-values. Default is NULL (uses viridis).
 #' @param ... Additional arguments.
 #'
 #' @return Invisibly returns a data frame with coordinates and p-values.
@@ -22,7 +24,11 @@
 #' @examples
 #' \dontrun{
 #' data(mtcars)
+#' # Default viridis colors
 #' plot_correlation_matrix(mtcars)
+#'
+#' # Custom colors (e.g., white to purple)
+#' plot_correlation_matrix(mtcars, pval_color_low = "white", pval_color_high = "purple")
 #' }
 
 plot_correlation_matrix <- function(data = NULL,
@@ -44,23 +50,22 @@ plot_correlation_matrix <- function(data = NULL,
                                     legend_height= 0.6,
                                     legend_x_start=1,
                                     legend_y_start=0.9,
-                                    legend_title_offset = 0.3) {
+                                    legend_title_offset = 0.3,
+                                    pval_color_low = NULL,
+                                    pval_color_high = NULL) {
 
 
   if (!requireNamespace("Hmisc", quietly = TRUE) ||
-      !requireNamespace("corrplot", quietly = TRUE) ||
-      !requireNamespace("viridis", quietly = TRUE)) {
-    stop("Please install 'Hmisc', 'corrplot' and 'viridis'.")
+      !requireNamespace("corrplot", quietly = TRUE)) {
+    stop("Please install 'Hmisc' and 'corrplot'.")
   }
 
-  # if (!requireNamespace("biostatUZH", quietly = TRUE)) {
-  #   stop(
-  #     "Package 'biostatUZH' is required for p-value formatting.\n",
-  #     "Install it with one of the following:\n",
-  #     "  remotes::install_github(\"EBPI-Biostatistics/biostatUZH\")\n",
-  #     "  install.packages(\"biostatUZH\", repos = \"http://R-Forge.R-project.org\")"
-  #   )
-  # }
+  # Check for viridis only if using default colors
+  if (is.null(pval_color_low) || is.null(pval_color_high)) {
+    if (!requireNamespace("viridis", quietly = TRUE)) {
+      stop("Please install 'viridis' or specify custom colors with pval_color_low and pval_color_high.")
+    }
+  }
 
   # Helper function to clean variable names
   clean_variable_names <- function(names) {
@@ -198,16 +203,25 @@ plot_correlation_matrix <- function(data = NULL,
   # Filter for significant p-values (< 0.05) for colored circles
   significant <- upper_triangle[!is.na(upper_triangle$pval) & upper_triangle$pval < sig.level, ]
 
-  # Create viridis color mapping for significant p-values
-  library(viridis)
+  # Create color mapping for significant p-values
+  # Use custom colors if provided, otherwise use viridis
   if (nrow(significant) > 0) {
-    # Map p-values from 0 to 0.05 to viridis colors
+    # Map p-values from 0 to 0.05 to colors
     # Lower p-values get more intense colors
     p_range <- c(min(upper_triangle$pval), 0.05)
     # Normalize p-values to 0-1 scale, then invert so lower p-values = higher color intensity
     color_scale <- 1 - (significant$pval - p_range[1]) / (p_range[2] - p_range[1])
     # color_scale <- color_scale**2 # extra color boost possible
-    circle_colors <- viridis(100)[pmax(1, pmin(100, round(color_scale * 100)))]
+
+    # Generate color palette based on user input or default to viridis
+    if (!is.null(pval_color_low) && !is.null(pval_color_high)) {
+      color_palette <- colorRampPalette(c(pval_color_high, pval_color_low))(100)
+    } else {
+      library(viridis)
+      color_palette <- viridis(100)
+    }
+
+    circle_colors <- color_palette[pmax(1, pmin(100, round(color_scale * 100)))]
   }
 
   # Clear the upper triangle by drawing white rectangles
@@ -279,19 +293,24 @@ plot_correlation_matrix <- function(data = NULL,
   text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height/2, "0", cex = number_size, xpd = TRUE)
   text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, "-1", cex = number_size, xpd = TRUE)
 
-  # Add custom p-value legend (Viridis) if there are significant values
+  # Add custom p-value legend if there are significant values
   if (nrow(significant) > 0) {
     pval_legend_x_start <- legend_x_start + legend_width + 0.8
 
-    # Create viridis color gradient
-    viridis_colors <- rev(viridis(100))
+    # Create color gradient based on user input or default to viridis
+    if (!is.null(pval_color_low) && !is.null(pval_color_high)) {
+      pval_legend_colors <- rev(colorRampPalette(c(pval_color_high, pval_color_low))(100))
+    } else {
+      library(viridis)
+      pval_legend_colors <- rev(viridis(100))
+    }
 
     # Draw p-value legend rectangles
     for (i in 1:100) {
       y_pos <- legend_y_start - (i-1) * legend_step
       rect(pval_legend_x_start, y_pos - legend_step,
            pval_legend_x_start + legend_width, y_pos,
-           col = viridis_colors[i], border = NA)
+           col = pval_legend_colors[i], border = NA)
     }
 
     # Add p-value legend labels and title

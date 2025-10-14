@@ -15,7 +15,7 @@
 #' @param ... Additional arguments (currently not used, reserved for future
 #'   extensions).
 #'
-#' @author Charlotte Soneson/Mechthild Lütge/Roman Stadler/Pilar Ballesteros Cuartero
+#' @author Charlotte Soneson, Mechthild Lütge, Roman Stadler, Pilar Ballesteros Cuartero
 #'
 #' @details
 #' The SingleCellBrowserSeurat3 function creates an interactive dashboard with

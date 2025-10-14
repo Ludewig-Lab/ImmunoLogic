@@ -197,7 +197,5 @@ SingleCellBrowserSeurat3(pbmc_small, appTitle = "My Experiment Browser")
 \code{\link[Seurat]{VlnPlot}}, \code{\link[Seurat]{DoHeatmap}}
 }
 \author{
-Charlotte Soneson/Mechthild Lütge/Roman Stadler/Pilar Ballesteros Cuartero
-
 Charlotte Soneson, Mechthild Lütge, Roman Stadler, Pilar Ballesteros Cuartero
 }

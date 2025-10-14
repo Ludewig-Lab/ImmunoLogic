@@ -99,3 +99,6 @@ avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors
 }
 
 }
+\author{
+Mechthild Lütge, Roman Stadler
+}

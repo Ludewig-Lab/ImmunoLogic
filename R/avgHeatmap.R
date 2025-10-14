@@ -24,6 +24,8 @@
 #'
 #' @return A `pheatmap` object.
 #'
+#' @author Mechthild Lütge, Roman Stadler
+#'
 #' @details
 #' - Handles gene names as symbols or ENSEMBL IDs.
 #' - Automatically removes genes with zero variance across groups.

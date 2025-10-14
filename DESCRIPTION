@@ -20,4 +20,14 @@ Imports:
     viridis,
     Seurat,
     dplyr,
-    pheatmap
+    pheatmap,
+    shiny,
+    shinydashboard,
+    shinycssloaders,
+    ggplot2,
+    plotly,
+    readr,
+    magrittr,
+    Cairo,
+    colourpicker,
+    ggpubr

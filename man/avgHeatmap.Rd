@@ -8,6 +8,7 @@ avgHeatmap(
   seurat,
   selGenes = NULL,
   group_by = NULL,
+  condition_by = NULL,
   scale_method = "row",
   cluster_rows = FALSE,
   cluster_cols = FALSE,
@@ -17,6 +18,7 @@ avgHeatmap(
   cellheight = 10,
   color_palette = NULL,
   annotation_colors = NULL,
+  condition_colors = NULL,
   gaps_row = NULL,
   gaps_col = NULL,
   n_variable_genes = 20,
@@ -38,6 +40,8 @@ avgHeatmap(
 
 \item{group_by}{Metadata column in the Seurat object to group cells by. Defaults to \code{NULL} (uses active identity).}
 
+\item{condition_by}{Optional metadata column for a second grouping variable (e.g., treatment condition). Default is \code{NULL}.}
+
 \item{scale_method}{Scaling method for the heatmap: \code{"row"}, \code{"column"}, or \code{"none"}. Default is \code{"row"}.}
 
 \item{cluster_rows}{Logical, whether to cluster rows. Default is \code{FALSE}.}
@@ -54,9 +58,10 @@ avgHeatmap(
 
 \item{color_palette}{Color vector for the heatmap. Default is a blue-white-red gradient.}
 
-\item{annotation_colors}{Named list or named vector of colors for annotations.
-If a named vector is provided, it will be automatically wrapped as \code{list(Group = your_vector)}.
-The vector should be named with group levels, or have length matching the number of groups.}
+\item{annotation_colors}{Named list of colors for annotations. Can contain elements named 'Group' and 'Condition'.
+Alternatively, provide a named vector which will be used for the Group annotation.}
+
+\item{condition_colors}{Named vector of colors for condition annotation. Only used if \code{condition_by} is specified.}
 
 \item{gaps_row}{Optional vector specifying rows after which to insert gaps. Default is \code{NULL}.}
 
@@ -79,6 +84,7 @@ If no genes are provided, the top variable features will be used.
 \item Automatically removes genes with zero variance across groups.
 \item Orders genes by cluster of maximum expression if \code{cluster_rows = FALSE}.
 \item Automatically selects color palettes based on group names and number of groups.
+\item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 }
 }
 \examples{
@@ -86,16 +92,22 @@ If no genes are provided, the top variable features will be used.
 library(Seurat)
 seurat <- YourSeuratObject
 
-# Using default colors
+# Simple heatmap by cell type
 avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
 
-# Using custom colors (named vector)
-my_colors <- c("Cluster0" = "#FF0000", "Cluster1" = "#00FF00")
-avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
+# Heatmap with cell type and condition
+avgHeatmap(seurat,
+           selGenes = c("GeneA", "GeneB"),
+           group_by = "celltype",
+           condition_by = "treatment")
 
-# Using custom colors (unnamed vector - will be matched to groups in order)
-my_colors <- c("#FF0000", "#00FF00", "#0000FF")
-avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
+# With custom colors for both annotations
+cluster_cols <- c("Cluster0" = "red", "Cluster1" = "blue")
+condition_cols <- c("WT" = "forestgreen", "Mutant" = "firebrick")
+avgHeatmap(seurat,
+           annotation_colors = cluster_cols,
+           condition_colors = condition_cols,
+           condition_by = "treatment")
 }
 
 }

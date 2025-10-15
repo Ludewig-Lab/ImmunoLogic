@@ -6,6 +6,7 @@
 #' @param seurat A Seurat object.
 #' @param selGenes Character vector of genes to plot, or a data.frame with a column named `gene` or `geneID`. Defaults to `NULL`.
 #' @param group_by Metadata column in the Seurat object to group cells by. Defaults to `NULL` (uses active identity).
+#' @param condition_by Optional metadata column for a second grouping variable (e.g., treatment condition). Default is `NULL`.
 #' @param scale_method Scaling method for the heatmap: `"row"`, `"column"`, or `"none"`. Default is `"row"`.
 #' @param cluster_rows Logical, whether to cluster rows. Default is `FALSE`.
 #' @param cluster_cols Logical, whether to cluster columns. Default is `FALSE`.
@@ -14,9 +15,9 @@
 #' @param cellwidth Numeric, width of each cell in the heatmap. Default is `15`.
 #' @param cellheight Numeric, height of each cell in the heatmap. Default is `10`.
 #' @param color_palette Color vector for the heatmap. Default is a blue-white-red gradient.
-#' @param annotation_colors Named list or named vector of colors for annotations.
-#'   If a named vector is provided, it will be automatically wrapped as `list(Group = your_vector)`.
-#'   The vector should be named with group levels, or have length matching the number of groups.
+#' @param annotation_colors Named list of colors for annotations. Can contain elements named 'Group' and 'Condition'.
+#'   Alternatively, provide a named vector which will be used for the Group annotation.
+#' @param condition_colors Named vector of colors for condition annotation. Only used if `condition_by` is specified.
 #' @param gaps_row Optional vector specifying rows after which to insert gaps. Default is `NULL`.
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
 #' @param n_variable_genes Number of top variable genes to use if `selGenes` is `NULL`. Default is `20`.
@@ -31,6 +32,7 @@
 #' - Automatically removes genes with zero variance across groups.
 #' - Orders genes by cluster of maximum expression if `cluster_rows = FALSE`.
 #' - Automatically selects color palettes based on group names and number of groups.
+#' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 #'
 #' @importFrom Seurat VariableFeatures Idents GetAssayData
 #' @importFrom dplyr mutate left_join select group_by summarise
@@ -42,16 +44,22 @@
 #' library(Seurat)
 #' seurat <- YourSeuratObject
 #'
-#' # Using default colors
+#' # Simple heatmap by cell type
 #' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
 #'
-#' # Using custom colors (named vector)
-#' my_colors <- c("Cluster0" = "#FF0000", "Cluster1" = "#00FF00")
-#' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
+#' # Heatmap with cell type and condition
+#' avgHeatmap(seurat,
+#'            selGenes = c("GeneA", "GeneB"),
+#'            group_by = "celltype",
+#'            condition_by = "treatment")
 #'
-#' # Using custom colors (unnamed vector - will be matched to groups in order)
-#' my_colors <- c("#FF0000", "#00FF00", "#0000FF")
-#' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), annotation_colors = my_colors)
+#' # With custom colors for both annotations
+#' cluster_cols <- c("Cluster0" = "red", "Cluster1" = "blue")
+#' condition_cols <- c("WT" = "forestgreen", "Mutant" = "firebrick")
+#' avgHeatmap(seurat,
+#'            annotation_colors = cluster_cols,
+#'            condition_colors = condition_cols,
+#'            condition_by = "treatment")
 #' }
 #'
 #' @export
@@ -59,6 +67,7 @@
 avgHeatmap <- function(seurat,
                        selGenes = NULL,
                        group_by = NULL,
+                       condition_by = NULL,
                        scale_method = "row",
                        cluster_rows = FALSE,
                        cluster_cols = FALSE,
@@ -68,6 +77,7 @@ avgHeatmap <- function(seurat,
                        cellheight = 10,
                        color_palette = NULL,
                        annotation_colors = NULL,
+                       condition_colors = NULL,
                        gaps_row = NULL,
                        gaps_col = NULL,
                        n_variable_genes = 20,
@@ -91,6 +101,26 @@ avgHeatmap <- function(seurat,
     message("Note: 'colVecIdent' is deprecated. Please use 'annotation_colors' instead.")
     if (is.null(annotation_colors)) {
       annotation_colors <- colVecIdent
+    }
+  }
+
+  # Map colVecCond to condition_colors
+  if (!is.null(colVecCond)) {
+    message("Note: 'colVecCond' is deprecated. Please use 'condition_colors' instead.")
+    if (is.null(condition_colors)) {
+      condition_colors <- colVecCond
+    }
+  }
+
+  # Map condCol to condition_by (if it's TRUE, try to detect condition column)
+  if (!is.null(condCol) && condCol == TRUE && is.null(condition_by)) {
+    # Try to find a 'cond' or 'condition' column in metadata
+    if ("cond" %in% colnames(seurat@meta.data)) {
+      condition_by <- "cond"
+      message("Note: 'condCol=TRUE' detected. Using 'cond' column for condition annotation.")
+    } else if ("condition" %in% colnames(seurat@meta.data)) {
+      condition_by <- "condition"
+      message("Note: 'condCol=TRUE' detected. Using 'condition' column for condition annotation.")
     }
   }
 
@@ -172,6 +202,16 @@ avgHeatmap <- function(seurat,
     )
   }
 
+  # Add condition if specified
+  if (!is.null(condition_by)) {
+    if (!condition_by %in% colnames(seurat@meta.data)) {
+      stop("condition_by '", condition_by, "' not found in seurat metadata")
+    }
+    clusterAssigned$condition <- seurat@meta.data[[condition_by]]
+    # Create combined identity: celltype_condition
+    clusterAssigned$combined_ident <- paste0(clusterAssigned$ident, "_", clusterAssigned$condition)
+  }
+
   # Get assay data
   seuratDat <- GetAssayData(seurat, assay = "RNA", slot = "data")
 
@@ -193,7 +233,7 @@ avgHeatmap <- function(seurat,
     stop("No matching genes found in the Seurat object. Check gene names.")
   }
 
-  # Create expression matrix averaged by identity
+  # Create expression matrix averaged by identity (and condition if specified)
   logNormExpres <- as.data.frame(t(as.matrix(
     seuratDat[matched_genes$gene, ]
   )))
@@ -201,15 +241,32 @@ avgHeatmap <- function(seurat,
   logNormExpres <- logNormExpres %>%
     mutate(cell = rownames(.)) %>%
     left_join(clusterAssigned, by = "cell") %>%
-    dplyr::select(-cell) %>%
-    group_by(ident) %>%
-    summarise_all(mean, .groups = 'drop')
+    dplyr::select(-cell)
+
+  # Group by combined identity if condition is specified
+  if (!is.null(condition_by)) {
+    logNormExpres <- logNormExpres %>%
+      group_by(combined_ident) %>%
+      summarise_at(vars(-ident, -condition), mean, .groups = 'drop')
+  } else {
+    logNormExpres <- logNormExpres %>%
+      group_by(ident) %>%
+      summarise_all(mean, .groups = 'drop')
+  }
 
   # Convert to matrix format for heatmap
-  logNormExpresMa <- logNormExpres %>%
-    dplyr::select(-ident) %>%
-    as.matrix()
-  rownames(logNormExpresMa) <- logNormExpres$ident
+  if (!is.null(condition_by)) {
+    logNormExpresMa <- logNormExpres %>%
+      dplyr::select(-combined_ident) %>%
+      as.matrix()
+    rownames(logNormExpresMa) <- logNormExpres$combined_ident
+  } else {
+    logNormExpresMa <- logNormExpres %>%
+      dplyr::select(-ident) %>%
+      as.matrix()
+    rownames(logNormExpresMa) <- logNormExpres$ident
+  }
+
   logNormExpresMa <- t(logNormExpresMa)
 
   # Clean up gene names (remove ENSEMBL prefix if present)
@@ -263,149 +320,194 @@ avgHeatmap <- function(seurat,
     color_palette <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(50)
   }
 
-  # Create annotation for columns (cell types/groups)
-  annotation_col <- data.frame(
-    Group = colnames(logNormExpresMa)
-  )
-  rownames(annotation_col) <- colnames(logNormExpresMa)
+  # ===========================================================================
+  # CREATE ANNOTATION DATA FRAME
+  # ===========================================================================
 
-  # Get the actual groups present in the data (after averaging)
-  groups_present <- unique(annotation_col$Group)
-  n_groups <- length(groups_present)
+  if (!is.null(condition_by)) {
+    # Parse combined identities back into celltype and condition
+    col_names <- colnames(logNormExpresMa)
 
-  # Set default annotation colors if not provided
-  if (is.null(annotation_colors)) {
-    # Define nice color palettes
+    # Extract celltype and condition from combined names
+    celltype_vec <- gsub("_[^_]*$", "", col_names)  # Remove last underscore part
+    condition_vec <- gsub("^.*_", "", col_names)     # Get last underscore part
 
-    disease_colors <- c("#dfc27d", "#BE3144", "#202547", "#355C7D", "#779d8d")
-
-    fibroblast_colors <- c("#D53E4F", "#f4a582", "#ff7b7b", "#8e0b00", "#FEE08B",
-                           "#42090D", "#FF7B00", "#FFF4DF")
-
-    nice_colors <- c("#67001f", "#D53E4F", "#f4a582", "#FEE08B", "#003c30", "#01665e",
-                     "#66C2A5", "#3288BD", "#BEAED4", "#c7eae5", "#355C7D", "#202547",
-                     "#B45B5C", "#8c510a")
-
-
-    extended_colors <- c("#fde0dd", "#fa9fb5", "#d95f0e", "#dd1c77", "#D53E4F",
-                         "#f4a582", "#FEE08B", "#f03b20", "#ffffcc", "#43a2ca",
-                         "#1c9099", "#355C7D", "#3288BD", "#BEAED4", "#756bb1",
-                         "#c7eae5")
-
-
-    large_palette <- c(
-      "#fde0dd", "#fa9fb5", "#f768a1", "#dd1c77", "#980043",  # pink–magenta
-      "#f4a582", "#fdae61", "#f46d43", "#d73027", "#a50026",  # orange–red
-      "#fee08b", "#ffffbf", "#e6f598", "#99d594", "#66c2a5",  # warm–green
-      "#43a2ca", "#1c9099", "#016c59", "#3288bd", "#5e4fa2",  # teal–blue–purple
-      "#beaed4", "#9e9ac8", "#756bb1", "#542788", "#3f007d",  # purple tones
-      "#c7eae5", "#a6bddb", "#74a9cf", "#3690c0", "#045a8d"   # cool blue range
+    annotation_col <- data.frame(
+      Celltype = celltype_vec,
+      Condition = condition_vec,
+      row.names = col_names
     )
 
-    # Choose color palette based on group names and count
-    if (n_groups <= 5 && any(grepl("healthy|explant|visit", groups_present, ignore.case = TRUE))) {
-      # Disease condition colors
-      group_colors <- disease_colors[1:n_groups]
-    } else if (n_groups <= 8 && any(grepl("Fb|Periv|VSMC", groups_present, ignore.case = TRUE))) {
-      # Fibroblast colors
-      group_colors <- fibroblast_colors[1:n_groups]
-    } else if (n_groups <= 14) {
-      # General nice colors for clusters
-      group_colors <- nice_colors[1:n_groups]
-    } else if (n_groups <= 16) {
-      # Extended colors for 15-16 groups
-      group_colors <- extended_colors[1:n_groups]
-    } else if (n_groups <= 30) {
-      # Large palette for 17-30 groups
-      group_colors <- large_palette[1:n_groups]
-    } else {
-      # For very many groups (>30), use large palette + rainbow
-      group_colors <- c(large_palette, rainbow(n_groups - length(large_palette)))
-    }
-
-
-    names(group_colors) <- groups_present
-    annotation_colors <- list(Group = group_colors)
+    # Get unique values for color assignment
+    celltypes_present <- unique(celltype_vec)
+    conditions_present <- unique(condition_vec)
+    n_celltypes <- length(celltypes_present)
+    n_conditions <- length(conditions_present)
 
   } else {
-    # User provided annotation_colors - need to process it
+    # Simple annotation without condition
+    annotation_col <- data.frame(
+      Group = colnames(logNormExpresMa),
+      row.names = colnames(logNormExpresMa)
+    )
 
-    # If user provided a vector, wrap it in a list
-    if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
+    groups_present <- unique(annotation_col$Group)
+    n_groups <- length(groups_present)
+  }
 
-      # Check if the vector has names
-      if (!is.null(names(annotation_colors))) {
-        # Named vector - filter to only groups present in data
-        group_colors <- annotation_colors[names(annotation_colors) %in% groups_present]
+  # ===========================================================================
+  # SETUP ANNOTATION COLORS
+  # ===========================================================================
 
-        # Check if we have colors for all groups
-        if (length(group_colors) < n_groups) {
-          missing_groups <- setdiff(groups_present, names(group_colors))
-          warning("Some groups are missing from annotation_colors. ",
-                  "Missing: ", paste(missing_groups, collapse = ", "))
+  # Define color palettes
+  disease_colors <- c("#dfc27d", "#BE3144", "#202547", "#355C7D", "#779d8d")
+  fibroblast_colors <- c("#D53E4F", "#f4a582", "#ff7b7b", "#8e0b00", "#FEE08B",
+                         "#42090D", "#FF7B00", "#FFF4DF")
+  nice_colors <- c("#67001f", "#D53E4F", "#f4a582", "#FEE08B", "#003c30", "#01665e",
+                   "#66C2A5", "#3288BD", "#BEAED4", "#c7eae5", "#355C7D", "#202547",
+                   "#B45B5C", "#8c510a")
+  extended_colors <- c("#fde0dd", "#fa9fb5", "#d95f0e", "#dd1c77", "#D53E4F",
+                       "#f4a582", "#FEE08B", "#f03b20", "#ffffcc", "#43a2ca",
+                       "#1c9099", "#355C7D", "#3288BD", "#BEAED4", "#756bb1",
+                       "#c7eae5")
+  large_palette <- c(
+    "#fde0dd", "#fa9fb5", "#f768a1", "#dd1c77", "#980043",
+    "#f4a582", "#fdae61", "#f46d43", "#d73027", "#a50026",
+    "#fee08b", "#ffffbf", "#e6f598", "#99d594", "#66c2a5",
+    "#43a2ca", "#1c9099", "#016c59", "#3288bd", "#5e4fa2",
+    "#beaed4", "#9e9ac8", "#756bb1", "#542788", "#3f007d",
+    "#c7eae5", "#a6bddb", "#74a9cf", "#3690c0", "#045a8d"
+  )
 
-          # Add default colors for missing groups
-          default_colors <- rainbow(length(missing_groups))
-          names(default_colors) <- missing_groups
-          group_colors <- c(group_colors, default_colors)
+  if (!is.null(condition_by)) {
+    # Handle colors for dual annotation (celltype + condition)
+
+    # === CELLTYPE COLORS ===
+    if (!is.null(annotation_colors)) {
+      if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
+        if (!is.null(names(annotation_colors))) {
+          celltype_colors <- annotation_colors[names(annotation_colors) %in% celltypes_present]
+          if (length(celltype_colors) < n_celltypes) {
+            missing <- setdiff(celltypes_present, names(celltype_colors))
+            default_cols <- rainbow(length(missing))
+            names(default_cols) <- missing
+            celltype_colors <- c(celltype_colors, default_cols)
+          }
+        } else {
+          if (length(annotation_colors) < n_celltypes) {
+            annotation_colors <- c(annotation_colors, rainbow(n_celltypes - length(annotation_colors)))
+          }
+          celltype_colors <- annotation_colors[1:n_celltypes]
+          names(celltype_colors) <- celltypes_present
         }
-
-      } else {
-        # Unnamed vector - assign to groups in order
-        if (length(annotation_colors) < n_groups) {
-          warning("annotation_colors has ", length(annotation_colors),
-                  " colors but there are ", n_groups, " groups. ",
-                  "Adding default colors for remaining groups.")
-          # Extend with default colors
-          extra_colors <- rainbow(n_groups - length(annotation_colors))
-          annotation_colors <- c(annotation_colors, extra_colors)
-        } else if (length(annotation_colors) > n_groups) {
-          message("annotation_colors has more colors than groups. Using first ", n_groups, " colors.")
-          annotation_colors <- annotation_colors[1:n_groups]
+      } else if (is.list(annotation_colors)) {
+        if ("Celltype" %in% names(annotation_colors)) {
+          celltype_colors <- annotation_colors$Celltype
+        } else if ("Group" %in% names(annotation_colors)) {
+          celltype_colors <- annotation_colors$Group
+        } else {
+          celltype_colors <- annotation_colors[[1]]
         }
-
-        # Assign names based on groups present
-        group_colors <- annotation_colors[1:n_groups]
-        names(group_colors) <- groups_present
+        if (!is.null(names(celltype_colors))) {
+          celltype_colors <- celltype_colors[names(celltype_colors) %in% celltypes_present]
+        }
       }
-
-      annotation_colors <- list(Group = group_colors)
-
-    } else if (is.list(annotation_colors)) {
-      # User provided a list
-
-      # Try to find the right element
-      if ("Group" %in% names(annotation_colors)) {
-        group_colors <- annotation_colors$Group
-      } else if (length(annotation_colors) > 0) {
-        # Use first element
-        group_colors <- annotation_colors[[1]]
-        message("Using first element of annotation_colors list for Group colors")
+    } else {
+      # Auto-select palette for celltypes
+      if (n_celltypes <= 5 && any(grepl("healthy|explant|visit", celltypes_present, ignore.case = TRUE))) {
+        celltype_colors <- disease_colors[1:n_celltypes]
+      } else if (n_celltypes <= 8 && any(grepl("Fb|Periv|VSMC", celltypes_present, ignore.case = TRUE))) {
+        celltype_colors <- fibroblast_colors[1:n_celltypes]
+      } else if (n_celltypes <= 14) {
+        celltype_colors <- nice_colors[1:n_celltypes]
+      } else if (n_celltypes <= 16) {
+        celltype_colors <- extended_colors[1:n_celltypes]
+      } else if (n_celltypes <= 30) {
+        celltype_colors <- large_palette[1:n_celltypes]
       } else {
-        stop("annotation_colors list is empty")
+        celltype_colors <- c(large_palette, rainbow(n_celltypes - length(large_palette)))
       }
+      names(celltype_colors) <- celltypes_present
+    }
 
-      # Filter to groups present
-      if (!is.null(names(group_colors))) {
-        group_colors <- group_colors[names(group_colors) %in% groups_present]
-
-        # Check if we need to add colors for missing groups
-        if (length(group_colors) < n_groups) {
-          missing_groups <- setdiff(groups_present, names(group_colors))
-          default_colors <- rainbow(length(missing_groups))
-          names(default_colors) <- missing_groups
-          group_colors <- c(group_colors, default_colors)
+    # === CONDITION COLORS ===
+    if (!is.null(condition_colors)) {
+      if (!is.null(names(condition_colors))) {
+        cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
+        if (length(cond_colors) < n_conditions) {
+          missing <- setdiff(conditions_present, names(cond_colors))
+          default_cols <- c("forestgreen", "firebrick", "steelblue", "orange")[1:length(missing)]
+          names(default_cols) <- missing
+          cond_colors <- c(cond_colors, default_cols)
         }
       } else {
-        # Unnamed - assign to groups
-        if (length(group_colors) < n_groups) {
-          extra_colors <- rainbow(n_groups - length(group_colors))
-          group_colors <- c(group_colors, extra_colors)
-        }
-        names(group_colors) <- groups_present[1:length(group_colors)]
+        cond_colors <- condition_colors[1:n_conditions]
+        names(cond_colors) <- conditions_present
       }
+    } else {
+      # Default condition colors
+      default_cond_colors <- c("forestgreen", "firebrick", "steelblue", "orange", "purple")
+      cond_colors <- default_cond_colors[1:n_conditions]
+      names(cond_colors) <- conditions_present
+    }
 
-      annotation_colors <- list(Group = group_colors)
+    ann_colors_final <- list(
+      Celltype = celltype_colors,
+      Condition = cond_colors
+    )
+
+  } else {
+    # Handle colors for single annotation (group only)
+
+    if (is.null(annotation_colors)) {
+      # Auto-select palette
+      if (n_groups <= 5 && any(grepl("healthy|explant|visit", groups_present, ignore.case = TRUE))) {
+        group_colors <- disease_colors[1:n_groups]
+      } else if (n_groups <= 8 && any(grepl("Fb|Periv|VSMC", groups_present, ignore.case = TRUE))) {
+        group_colors <- fibroblast_colors[1:n_groups]
+      } else if (n_groups <= 14) {
+        group_colors <- nice_colors[1:n_groups]
+      } else if (n_groups <= 16) {
+        group_colors <- extended_colors[1:n_groups]
+      } else if (n_groups <= 30) {
+        group_colors <- large_palette[1:n_groups]
+      } else {
+        group_colors <- c(large_palette, rainbow(n_groups - length(large_palette)))
+      }
+      names(group_colors) <- groups_present
+      ann_colors_final <- list(Group = group_colors)
+
+    } else {
+      # Process user-provided colors
+      if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
+        if (!is.null(names(annotation_colors))) {
+          group_colors <- annotation_colors[names(annotation_colors) %in% groups_present]
+          if (length(group_colors) < n_groups) {
+            missing <- setdiff(groups_present, names(group_colors))
+            default_cols <- rainbow(length(missing))
+            names(default_cols) <- missing
+            group_colors <- c(group_colors, default_cols)
+          }
+        } else {
+          if (length(annotation_colors) < n_groups) {
+            annotation_colors <- c(annotation_colors, rainbow(n_groups - length(annotation_colors)))
+          }
+          group_colors <- annotation_colors[1:n_groups]
+          names(group_colors) <- groups_present
+        }
+        ann_colors_final <- list(Group = group_colors)
+
+      } else if (is.list(annotation_colors)) {
+        if ("Group" %in% names(annotation_colors)) {
+          group_colors <- annotation_colors$Group
+        } else {
+          group_colors <- annotation_colors[[1]]
+        }
+        if (!is.null(names(group_colors))) {
+          group_colors <- group_colors[names(group_colors) %in% groups_present]
+        }
+        ann_colors_final <- list(Group = group_colors)
+      }
     }
   }
 
@@ -416,7 +518,7 @@ avgHeatmap <- function(seurat,
                 cluster_cols = cluster_cols,
                 color = color_palette,
                 annotation_col = annotation_col,
-                annotation_colors = annotation_colors,
+                annotation_colors = ann_colors_final,
                 cellwidth = cellwidth,
                 cellheight = cellheight,
                 show_rownames = show_rownames,

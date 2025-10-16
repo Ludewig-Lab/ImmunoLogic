@@ -63,7 +63,9 @@ fit_mmlt_flexible <- function(dataframe,
                               continuous_formula = "default", # default, interval, ordered
                               order=6,
                               automatic = T, # new parameter
-                              auto_threshold = 5 # threshold for automatic classification
+                              auto_threshold = 5, # threshold for automatic classification,
+                              verbose = T, # show status messages
+                              ...
 ){
   require(tram)
   require(qrng)

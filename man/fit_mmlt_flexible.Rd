@@ -16,7 +16,9 @@ fit_mmlt_flexible(
   continuous_formula = "default",
   order = 6,
   automatic = T,
-  auto_threshold = 5
+  auto_threshold = 5,
+  verbose = T,
+  ...
 )
 }
 \arguments{

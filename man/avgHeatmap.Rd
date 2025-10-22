@@ -12,6 +12,7 @@ avgHeatmap(
   scale_method = "row",
   cluster_rows = FALSE,
   cluster_cols = FALSE,
+  keep_gene_order = FALSE,
   show_rownames = TRUE,
   show_colnames = TRUE,
   cellwidth = 15,
@@ -48,6 +49,10 @@ avgHeatmap(
 
 \item{cluster_cols}{Logical, whether to cluster columns. Default is \code{FALSE}.}
 
+\item{keep_gene_order}{Logical, if \code{cluster_rows = FALSE}, should the original \code{selGenes} order be kept?
+If \code{FALSE} (default), genes will be reordered to create a "staircase" pattern.
+If \code{TRUE}, genes will be kept in the user-provided order.}
+
 \item{show_rownames}{Logical, whether to display row names (genes). Default is \code{TRUE}.}
 
 \item{show_colnames}{Logical, whether to display column names (groups). Default is \code{TRUE}.}
@@ -82,7 +87,10 @@ If no genes are provided, the top variable features will be used.
 \itemize{
 \item Handles gene names as symbols or ENSEMBL IDs.
 \item Automatically removes genes with zero variance across groups.
-\item Orders genes by cluster of maximum expression if \code{cluster_rows = FALSE}.
+\item If \code{cluster_rows = FALSE} and \code{keep_gene_order = FALSE} (default),
+orders genes by cluster of maximum expression to create a "staircase" pattern.
+\item If \code{cluster_rows = FALSE} and \code{keep_gene_order = TRUE},
+genes are kept in the user-provided order from \code{selGenes}.
 \item Automatically selects color palettes based on group names and number of groups.
 \item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 }
@@ -92,21 +100,19 @@ If no genes are provided, the top variable features will be used.
 library(Seurat)
 seurat <- YourSeuratObject
 
-# Simple heatmap by cell type
-avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
+# Simple heatmap by cell type (default "staircase" gene order)
+avgHeatmap(seurat, selGenes = c("GeneA", "GeneB", "GeneC"), group_by = "celltype")
+
+# Heatmap keeping the exact "GeneA", "GeneB", "GeneC" order
+avgHeatmap(seurat,
+           selGenes = c("GeneA", "GeneB", "GeneC"),
+           group_by = "celltype",
+           keep_gene_order = TRUE)
 
 # Heatmap with cell type and condition
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
-           condition_by = "treatment")
-
-# With custom colors for both annotations
-cluster_cols <- c("Cluster0" = "red", "Cluster1" = "blue")
-condition_cols <- c("WT" = "forestgreen", "Mutant" = "firebrick")
-avgHeatmap(seurat,
-           annotation_colors = cluster_cols,
-           condition_colors = condition_cols,
            condition_by = "treatment")
 }
 

@@ -10,6 +10,9 @@
 #' @param scale_method Scaling method for the heatmap: `"row"`, `"column"`, or `"none"`. Default is `"row"`.
 #' @param cluster_rows Logical, whether to cluster rows. Default is `FALSE`.
 #' @param cluster_cols Logical, whether to cluster columns. Default is `FALSE`.
+#' @param keep_gene_order Logical, if `cluster_rows = FALSE`, should the original `selGenes` order be kept?
+#'   If `FALSE` (default), genes will be reordered to create a "staircase" pattern.
+#'   If `TRUE`, genes will be kept in the user-provided order.
 #' @param show_rownames Logical, whether to display row names (genes). Default is `TRUE`.
 #' @param show_colnames Logical, whether to display column names (groups). Default is `TRUE`.
 #' @param cellwidth Numeric, width of each cell in the heatmap. Default is `15`.
@@ -30,7 +33,10 @@
 #' @details
 #' - Handles gene names as symbols or ENSEMBL IDs.
 #' - Automatically removes genes with zero variance across groups.
-#' - Orders genes by cluster of maximum expression if `cluster_rows = FALSE`.
+#' - If `cluster_rows = FALSE` and `keep_gene_order = FALSE` (default),
+#'   orders genes by cluster of maximum expression to create a "staircase" pattern.
+#' - If `cluster_rows = FALSE` and `keep_gene_order = TRUE`,
+#'   genes are kept in the user-provided order from `selGenes`.
 #' - Automatically selects color palettes based on group names and number of groups.
 #' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 #'
@@ -44,21 +50,19 @@
 #' library(Seurat)
 #' seurat <- YourSeuratObject
 #'
-#' # Simple heatmap by cell type
-#' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB"), group_by = "celltype")
+#' # Simple heatmap by cell type (default "staircase" gene order)
+#' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB", "GeneC"), group_by = "celltype")
+#'
+#' # Heatmap keeping the exact "GeneA", "GeneB", "GeneC" order
+#' avgHeatmap(seurat,
+#'            selGenes = c("GeneA", "GeneB", "GeneC"),
+#'            group_by = "celltype",
+#'            keep_gene_order = TRUE)
 #'
 #' # Heatmap with cell type and condition
 #' avgHeatmap(seurat,
 #'            selGenes = c("GeneA", "GeneB"),
 #'            group_by = "celltype",
-#'            condition_by = "treatment")
-#'
-#' # With custom colors for both annotations
-#' cluster_cols <- c("Cluster0" = "red", "Cluster1" = "blue")
-#' condition_cols <- c("WT" = "forestgreen", "Mutant" = "firebrick")
-#' avgHeatmap(seurat,
-#'            annotation_colors = cluster_cols,
-#'            condition_colors = condition_cols,
 #'            condition_by = "treatment")
 #' }
 #'
@@ -71,6 +75,7 @@ avgHeatmap <- function(seurat,
                        scale_method = "row",
                        cluster_rows = FALSE,
                        cluster_cols = FALSE,
+                       keep_gene_order = FALSE, # <-- ARGUMENT
                        show_rownames = TRUE,
                        show_colnames = TRUE,
                        cellwidth = 15,
@@ -292,28 +297,68 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Order genes to create "staircase" pattern - genes ordered by which cluster has highest expression
+  # ===========================================================================
+  # START MODIFIED BLOCK: Gene Ordering
+  # ===========================================================================
+
+  # Order genes based on user preference
   if (!cluster_rows) {
-    # Find which cluster has max expression for each gene
-    max_clusters <- apply(logNormExpresMa, 1, function(x) colnames(logNormExpresMa)[which.max(x)])
 
-    # Order genes by their max-expressing cluster, then by max expression level within cluster
-    gene_order <- names(sort(factor(max_clusters, levels = colnames(logNormExpresMa))))
+    if (keep_gene_order) {
+      # NEW LOGIC: Keep user-provided gene order
+      message("Keeping user-provided gene order (keep_gene_order = TRUE).")
 
-    # Within each cluster group, order genes by decreasing max expression
-    ordered_genes <- c()
-    for (cluster in colnames(logNormExpresMa)) {
-      cluster_genes <- names(max_clusters[max_clusters == cluster])
-      if (length(cluster_genes) > 0) {
-        # Order by decreasing expression in that cluster
-        cluster_gene_order <- cluster_genes[order(logNormExpresMa[cluster_genes, cluster], decreasing = TRUE)]
-        ordered_genes <- c(ordered_genes, cluster_gene_order)
+      # Clean the input gene list (in case it has ENSEMBL prefixes)
+      cleaned_gene_list <- gsub("^.*?\\.", "", gene_list)
+
+      # Get genes from list that are in the matrix, in list order
+      # This preserves duplicates in user's list, e.g. c("A", "B", "A")
+      ordered_genes_from_list <- cleaned_gene_list[cleaned_gene_list %in% rownames(logNormExpresMa)]
+
+      # Get genes in the matrix that were NOT in the user's list
+      # setdiff() correctly handles the duplicate issue
+      remaining_genes <- setdiff(rownames(logNormExpresMa), ordered_genes_from_list)
+
+      # Combine them: User's genes first, then the rest
+      final_gene_order <- c(ordered_genes_from_list, remaining_genes)
+
+      if (length(final_gene_order) == 0) {
+        warning("No genes from selGenes found after filtering. Skipping row ordering.")
+      } else {
+        # Reorder the matrix using the full, combined list
+        logNormExpresMa <- logNormExpresMa[final_gene_order, , drop = FALSE]
       }
-    }
 
-    # Reorder the matrix
-    logNormExpresMa <- logNormExpresMa[ordered_genes, , drop = FALSE]
+    } else {
+      # ORIGINAL STAIRCASE LOGIC
+      message("Ordering genes by cluster of max expression (keep_gene_order = FALSE).")
+
+      # Find which cluster has max expression for each gene
+      max_clusters <- apply(logNormExpresMa, 1, function(x) colnames(logNormExpresMa)[which.max(x)])
+
+      # Order genes by their max-expressing cluster
+      # This factor-based sort groups them by column
+      gene_order <- names(sort(factor(max_clusters, levels = colnames(logNormExpresMa))))
+
+      # Within each cluster group, order genes by decreasing max expression
+      ordered_genes <- c()
+      for (cluster in colnames(logNormExpresMa)) {
+        cluster_genes <- names(max_clusters[max_clusters == cluster])
+        if (length(cluster_genes) > 0) {
+          # Order by decreasing expression in that cluster
+          cluster_gene_order <- cluster_genes[order(logNormExpresMa[cluster_genes, cluster], decreasing = TRUE)]
+          ordered_genes <- c(ordered_genes, cluster_gene_order)
+        }
+      }
+
+      # Reorder the matrix
+      logNormExpresMa <- logNormExpresMa[ordered_genes, , drop = FALSE]
+    }
   }
+
+  # ===========================================================================
+  # END MODIFIED BLOCK
+  # ===========================================================================
 
   # Set default color palette for heatmap
   if (is.null(color_palette)) {
@@ -330,7 +375,7 @@ avgHeatmap <- function(seurat,
 
     # Extract celltype and condition from combined names
     celltype_vec <- gsub("_[^_]*$", "", col_names)  # Remove last underscore part
-    condition_vec <- gsub("^.*_", "", col_names)     # Get last underscore part
+    condition_vec <- gsub("^.*_", "", col_names)    # Get last underscore part
 
     annotation_col <- data.frame(
       Celltype = celltype_vec,
@@ -436,7 +481,23 @@ avgHeatmap <- function(seurat,
         cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
         if (length(cond_colors) < n_conditions) {
           missing <- setdiff(conditions_present, names(cond_colors))
-          default_cols <- c("forestgreen", "firebrick", "steelblue", "orange")[1:length(missing)]
+          default_cols <- c(
+            "steelblue",   # blue
+            "orange",      # orange
+            "purple",      # purple
+            "forestgreen", # green
+            "firebrick",   # red
+            "goldenrod",   # yellow/gold
+            "turquoise",   # cyan-ish
+            "violet",      # lighter purple
+            "darkolivegreen", # muted green
+            "coral",       # pinkish orange
+            "slateblue",   # darker blue
+            "tomato",      # bright red
+            "mediumorchid",# pink/purple
+            "darkgoldenrod",# darker yellow/brown
+            "cadetblue"    # muted blue
+          )[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
         }
@@ -446,7 +507,23 @@ avgHeatmap <- function(seurat,
       }
     } else {
       # Default condition colors
-      default_cond_colors <- c("forestgreen", "firebrick", "steelblue", "orange", "purple")
+      default_cond_colors <- c(
+        "steelblue",   # blue
+        "orange",      # orange
+        "purple",      # purple
+        "forestgreen", # green
+        "firebrick",   # red
+        "goldenrod",   # yellow/gold
+        "turquoise",   # cyan-ish
+        "violet",      # lighter purple
+        "darkolivegreen", # muted green
+        "coral",       # pinkish orange
+        "slateblue",   # darker blue
+        "tomato",      # bright red
+        "mediumorchid",# pink/purple
+        "darkgoldenrod",# darker yellow/brown
+        "cadetblue"    # muted blue
+      )
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present
     }

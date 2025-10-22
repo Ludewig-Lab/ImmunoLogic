@@ -36,6 +36,7 @@
 #'   orders genes by cluster of maximum expression to create a "staircase" pattern.
 #' - If `gene_order` is provided, genes are kept in the user-provided order.
 #' - If `cluster_order` is provided, clusters are kept in the user-provided order.
+#'   (When `condition_by` is used, this groups columns based on the cluster prefix).
 #' - Automatically selects color palettes based on group names and number of groups.
 #' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 #'
@@ -62,6 +63,13 @@
 #' avgHeatmap(seurat,
 #'            selGenes = c("GeneA", "GeneB"),
 #'            group_by = "celltype",
+#'            cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+#'
+#' # Manual cluster order also works with condition_by
+#' avgHeatmap(seurat,
+#'            selGenes = c("GeneA", "GeneB"),
+#'            group_by = "celltype",
+#'            condition_by = "treatment",
 #'            cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
 #' }
 #'
@@ -297,19 +305,51 @@ avgHeatmap <- function(seurat,
   # ===========================================================================
 
   # Apply cluster_order if provided (manually orders columns)
-  # This runs before the gene ordering, so the "staircase" logic
-  # will respect the manual column order.
   if (!is.null(cluster_order)) {
-    message("Applying manual column order (cluster_order).")
-    # Only reorder columns that exist in the matrix
-    order_valid <- cluster_order[cluster_order %in% colnames(logNormExpresMa)]
-    if (length(order_valid) > 0) {
-      # Add any columns not in cluster_order to the end
-      remaining_cols <- setdiff(colnames(logNormExpresMa), order_valid)
-      final_order <- c(order_valid, remaining_cols)
-      logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+
+    if (!is.null(condition_by)) {
+      # Smart ordering for combined condition_by names
+      message("Applying manual column order (cluster_order) with condition_by grouping.")
+
+      final_order <- c()
+      current_cols <- colnames(logNormExpresMa)
+
+      for (base_cluster in cluster_order) {
+        # Find columns that start with "ClusterName_"
+        # grep() finds matches, value = TRUE returns the names
+        # We sort them to ensure conditions (e.g., _A, _B) are in alphabetical order
+        cols_to_add <- sort(grep(paste0("^", base_cluster, "_"), current_cols, value = TRUE))
+
+        if (length(cols_to_add) > 0) {
+          final_order <- c(final_order, cols_to_add)
+          # Remove these from current_cols so they aren't added again
+          current_cols <- setdiff(current_cols, cols_to_add)
+        }
+      }
+
+      # Add any remaining columns that didn't match any prefix
+      final_order <- c(final_order, current_cols)
+
+      if (length(final_order) == length(colnames(logNormExpresMa))) {
+        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+      } else {
+        warning("Error applying cluster_order with condition_by. Column name mismatch.")
+      }
+
     } else {
-      warning("None of the names in 'cluster_order' match the matrix column names.")
+      # ORIGINAL logic (no condition_by, exact match)
+      message("Applying manual column order (cluster_order).")
+      # Only reorder columns that exist in the matrix
+      order_valid <- cluster_order[cluster_order %in% colnames(logNormExpresMa)]
+
+      if (length(order_valid) > 0) {
+        # Add any columns not in cluster_order to the end
+        remaining_cols <- setdiff(colnames(logNormExpresMa), order_valid)
+        final_order <- c(order_valid, remaining_cols)
+        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+      } else {
+        warning("None of the names in 'cluster_order' match the matrix column names.")
+      }
     }
   }
 
@@ -496,21 +536,21 @@ avgHeatmap <- function(seurat,
         if (length(cond_colors) < n_conditions) {
           missing <- setdiff(conditions_present, names(cond_colors))
           default_cols <- c(
-            "steelblue",   # blue
-            "orange",      # orange
-            "purple",      # purple
-            "forestgreen", # green
-            "firebrick",   # red
-            "goldenrod",   # yellow/gold
-            "turquoise",   # cyan-ish
-            "violet",      # lighter purple
+            "steelblue",     # blue
+            "orange",        # orange
+            "purple",        # purple
+            "forestgreen",   # green
+            "firebrick",     # red
+            "goldenrod",     # yellow/gold
+            "turquoise",     # cyan-ish
+            "violet",        # lighter purple
             "darkolivegreen", # muted green
-            "coral",       # pinkish orange
-            "slateblue",   # darker blue
-            "tomato",      # bright red
-            "mediumorchid",# pink/purple
-            "darkgoldenrod",# darker yellow/brown
-            "cadetblue"    # muted blue
+            "coral",         # pinkish orange
+            "slateblue",     # darker blue
+            "tomato",        # bright red
+            "mediumorchid", # pink/purple
+            "darkgoldenrod", # darker yellow/brown
+            "cadetblue"      # muted blue
           )[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
@@ -522,21 +562,21 @@ avgHeatmap <- function(seurat,
     } else {
       # Default condition colors
       default_cond_colors <- c(
-        "steelblue",   # blue
-        "orange",      # orange
-        "purple",      # purple
-        "forestgreen", # green
-        "firebrick",   # red
-        "goldenrod",   # yellow/gold
-        "turquoise",   # cyan-ish
-        "violet",      # lighter purple
+        "steelblue",     # blue
+        "orange",        # orange
+        "purple",        # purple
+        "forestgreen",   # green
+        "firebrick",     # red
+        "goldenrod",     # yellow/gold
+        "turquoise",     # cyan-ish
+        "violet",        # lighter purple
         "darkolivegreen", # muted green
-        "coral",       # pinkish orange
-        "slateblue",   # darker blue
-        "tomato",      # bright red
-        "mediumorchid",# pink/purple
-        "darkgoldenrod",# darker yellow/brown
-        "cadetblue"    # muted blue
+        "coral",         # pinkish orange
+        "slateblue",     # darker blue
+        "tomato",        # bright red
+        "mediumorchid", # pink/purple
+        "darkgoldenrod", # darker yellow/brown
+        "cadetblue"      # muted blue
       )
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present

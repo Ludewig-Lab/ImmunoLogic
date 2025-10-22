@@ -92,6 +92,7 @@ If no genes are provided, the top variable features will be used.
 orders genes by cluster of maximum expression to create a "staircase" pattern.
 \item If \code{gene_order} is provided, genes are kept in the user-provided order.
 \item If \code{cluster_order} is provided, clusters are kept in the user-provided order.
+(When \code{condition_by} is used, this groups columns based on the cluster prefix).
 \item Automatically selects color palettes based on group names and number of groups.
 \item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 }
@@ -114,6 +115,13 @@ avgHeatmap(seurat,
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
+           cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+
+# Manual cluster order also works with condition_by
+avgHeatmap(seurat,
+           selGenes = c("GeneA", "GeneB"),
+           group_by = "celltype",
+           condition_by = "treatment",
            cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
 }
 

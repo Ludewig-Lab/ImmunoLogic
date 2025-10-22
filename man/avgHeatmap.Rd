@@ -12,7 +12,8 @@ avgHeatmap(
   scale_method = "row",
   cluster_rows = FALSE,
   cluster_cols = FALSE,
-  keep_gene_order = FALSE,
+  cluster_order = NULL,
+  gene_order = NULL,
   show_rownames = TRUE,
   show_colnames = TRUE,
   cellwidth = 15,
@@ -49,9 +50,9 @@ avgHeatmap(
 
 \item{cluster_cols}{Logical, whether to cluster columns. Default is \code{FALSE}.}
 
-\item{keep_gene_order}{Logical, if \code{cluster_rows = FALSE}, should the original \code{selGenes} order be kept?
-If \code{FALSE} (default), genes will be reordered to create a "staircase" pattern.
-If \code{TRUE}, genes will be kept in the user-provided order.}
+\item{cluster_order}{Optional character vector to manually set the order of columns (clusters). Overrides \code{cluster_cols = FALSE}.}
+
+\item{gene_order}{Optional character vector to manually set the order of rows (genes). Overrides \code{cluster_rows = FALSE}.}
 
 \item{show_rownames}{Logical, whether to display row names (genes). Default is \code{TRUE}.}
 
@@ -87,10 +88,10 @@ If no genes are provided, the top variable features will be used.
 \itemize{
 \item Handles gene names as symbols or ENSEMBL IDs.
 \item Automatically removes genes with zero variance across groups.
-\item If \code{cluster_rows = FALSE} and \code{keep_gene_order = FALSE} (default),
+\item If \code{cluster_rows = FALSE} and \code{gene_order = NULL} (default),
 orders genes by cluster of maximum expression to create a "staircase" pattern.
-\item If \code{cluster_rows = FALSE} and \code{keep_gene_order = TRUE},
-genes are kept in the user-provided order from \code{selGenes}.
+\item If \code{gene_order} is provided, genes are kept in the user-provided order.
+\item If \code{cluster_order} is provided, clusters are kept in the user-provided order.
 \item Automatically selects color palettes based on group names and number of groups.
 \item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 }
@@ -103,17 +104,17 @@ seurat <- YourSeuratObject
 # Simple heatmap by cell type (default "staircase" gene order)
 avgHeatmap(seurat, selGenes = c("GeneA", "GeneB", "GeneC"), group_by = "celltype")
 
-# Heatmap keeping the exact "GeneA", "GeneB", "GeneC" order
+# Heatmap with manually specified gene order
 avgHeatmap(seurat,
-           selGenes = c("GeneA", "GeneB", "GeneC"),
+           selGenes = c("GeneC", "GeneA", "GeneB"),
            group_by = "celltype",
-           keep_gene_order = TRUE)
+           gene_order = c("GeneC", "GeneA", "GeneB"))
 
-# Heatmap with cell type and condition
+# Heatmap with manually specified cluster (column) order
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
-           condition_by = "treatment")
+           cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
 }
 
 }

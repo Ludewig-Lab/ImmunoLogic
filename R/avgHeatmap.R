@@ -495,7 +495,23 @@ avgHeatmap <- function(seurat,
         cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
         if (length(cond_colors) < n_conditions) {
           missing <- setdiff(conditions_present, names(cond_colors))
-          default_cols <- c("forestgreen", "firebrick", "steelblue", "orange")[1:length(missing)]
+          default_cols <- c(
+            "steelblue",   # blue
+            "orange",      # orange
+            "purple",      # purple
+            "forestgreen", # green
+            "firebrick",   # red
+            "goldenrod",   # yellow/gold
+            "turquoise",   # cyan-ish
+            "violet",      # lighter purple
+            "darkolivegreen", # muted green
+            "coral",       # pinkish orange
+            "slateblue",   # darker blue
+            "tomato",      # bright red
+            "mediumorchid",# pink/purple
+            "darkgoldenrod",# darker yellow/brown
+            "cadetblue"    # muted blue
+          )[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
         }
@@ -505,7 +521,23 @@ avgHeatmap <- function(seurat,
       }
     } else {
       # Default condition colors
-      default_cond_colors <- c("forestgreen", "firebrick", "steelblue", "orange", "purple")
+      default_cond_colors <- c(
+        "steelblue",   # blue
+        "orange",      # orange
+        "purple",      # purple
+        "forestgreen", # green
+        "firebrick",   # red
+        "goldenrod",   # yellow/gold
+        "turquoise",   # cyan-ish
+        "violet",      # lighter purple
+        "darkolivegreen", # muted green
+        "coral",       # pinkish orange
+        "slateblue",   # darker blue
+        "tomato",      # bright red
+        "mediumorchid",# pink/purple
+        "darkgoldenrod",# darker yellow/brown
+        "cadetblue"    # muted blue
+      )
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present
     }

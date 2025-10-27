@@ -2,7 +2,7 @@
 % Please edit documentation in R/avgHeatmap.R
 \name{avgHeatmap}
 \alias{avgHeatmap}
-\title{Average Expression Heatmap for Seurat Objects}
+\title{Average Expression Heatmap for Seurat Objects with Significance Testing}
 \usage{
 avgHeatmap(
   seurat,
@@ -24,6 +24,12 @@ avgHeatmap(
   gaps_row = NULL,
   gaps_col = NULL,
   n_variable_genes = 20,
+  show_significance = FALSE,
+  significance_direction = "higher",
+  significance_test = "wilcox",
+  pval_cutoffs = c(`***` = 0.001, `**` = 0.01, `*` = 0.05),
+  star_size = 8,
+  p_adjust_method = "BH",
   colVecIdent = NULL,
   colVecCond = NULL,
   ordVec = NULL,
@@ -75,6 +81,19 @@ Alternatively, provide a named vector which will be used for the Group annotatio
 
 \item{n_variable_genes}{Number of top variable genes to use if \code{selGenes} is \code{NULL}. Default is \code{20}.}
 
+\item{show_significance}{Logical, whether to perform statistical testing and show significance stars. Default is \code{FALSE}.}
+
+\item{significance_direction}{Direction for showing significance: "higher" (default), "lower", or "both".}
+
+\item{significance_test}{Statistical test to use: "wilcox" (default) or "t.test".}
+
+\item{pval_cutoffs}{Named numeric vector of p-value cutoffs. Default is \code{c("***" = 0.001, "**" = 0.01, "*" = 0.05)}.}
+
+\item{star_size}{Numeric, font size for significance stars. Default is \code{4}.}
+
+\item{p_adjust_method}{Method for p-value adjustment. Default is \code{"BH"} (Benjamini-Hochberg/FDR).
+Use \code{"none"} for unadjusted p-values. See \code{?p.adjust} for other options.}
+
 \item{...}{Additional arguments passed to \code{\link[pheatmap:pheatmap]{pheatmap::pheatmap()}}.}
 }
 \value{
@@ -82,7 +101,8 @@ A \code{pheatmap} object.
 }
 \description{
 Generates a heatmap of averaged expression values for selected genes across cell groups or identities in a Seurat object.
-If no genes are provided, the top variable features will be used.
+If no genes are provided, the top variable features will be used. Optionally performs statistical testing and displays
+significance stars on the heatmap.
 }
 \details{
 \itemize{
@@ -95,6 +115,9 @@ orders genes by cluster of maximum expression to create a "staircase" pattern.
 (When \code{condition_by} is used, this groups columns based on the cluster prefix).
 \item Automatically selects color palettes based on group names and number of groups.
 \item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
+\item When \code{show_significance = TRUE}, performs Wilcoxon rank-sum test (or t-test) comparing each
+cluster vs. all other clusters for each gene, and displays significance stars.
+P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
 }
 }
 \examples{
@@ -102,27 +125,25 @@ orders genes by cluster of maximum expression to create a "staircase" pattern.
 library(Seurat)
 seurat <- YourSeuratObject
 
-# Simple heatmap by cell type (default "staircase" gene order)
-avgHeatmap(seurat, selGenes = c("GeneA", "GeneB", "GeneC"), group_by = "celltype")
-
-# Heatmap with manually specified gene order
+# Simple heatmap with significance stars (higher than average)
 avgHeatmap(seurat,
-           selGenes = c("GeneC", "GeneA", "GeneB"),
+           selGenes = c("GeneA", "GeneB", "GeneC"),
            group_by = "celltype",
-           gene_order = c("GeneC", "GeneA", "GeneB"))
+           show_significance = TRUE)
 
-# Heatmap with manually specified cluster (column) order
+# Show significance for both higher and lower expression
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
-           cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+           show_significance = TRUE,
+           significance_direction = "both")
 
-# Manual cluster order also works with condition_by
+# Custom p-value cutoffs
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
-           condition_by = "treatment",
-           cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+           show_significance = TRUE,
+           pval_cutoffs = c("***" = 0.0001, "**" = 0.001, "*" = 0.01))
 }
 
 }

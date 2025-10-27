@@ -1,7 +1,8 @@
-#' Average Expression Heatmap for Seurat Objects
+#' Average Expression Heatmap for Seurat Objects with Significance Testing
 #'
 #' Generates a heatmap of averaged expression values for selected genes across cell groups or identities in a Seurat object.
-#' If no genes are provided, the top variable features will be used.
+#' If no genes are provided, the top variable features will be used. Optionally performs statistical testing and displays
+#' significance stars on the heatmap.
 #'
 #' @param seurat A Seurat object.
 #' @param selGenes Character vector of genes to plot, or a data.frame with a column named `gene` or `geneID`. Defaults to `NULL`.
@@ -23,6 +24,13 @@
 #' @param gaps_row Optional vector specifying rows after which to insert gaps. Default is `NULL`.
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
 #' @param n_variable_genes Number of top variable genes to use if `selGenes` is `NULL`. Default is `20`.
+#' @param show_significance Logical, whether to perform statistical testing and show significance stars. Default is `FALSE`.
+#' @param significance_direction Direction for showing significance: "higher" (default), "lower", or "both".
+#' @param significance_test Statistical test to use: "wilcox" (default) or "t.test".
+#' @param pval_cutoffs Named numeric vector of p-value cutoffs. Default is `c("***" = 0.001, "**" = 0.01, "*" = 0.05)`.
+#' @param star_size Numeric, font size for significance stars. Default is `4`.
+#' @param p_adjust_method Method for p-value adjustment. Default is `"BH"` (Benjamini-Hochberg/FDR).
+#'   Use `"none"` for unadjusted p-values. See `?p.adjust` for other options.
 #' @param ... Additional arguments passed to [pheatmap::pheatmap()].
 #'
 #' @return A `pheatmap` object.
@@ -39,38 +47,39 @@
 #'   (When `condition_by` is used, this groups columns based on the cluster prefix).
 #' - Automatically selects color palettes based on group names and number of groups.
 #' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
+#' - When `show_significance = TRUE`, performs Wilcoxon rank-sum test (or t-test) comparing each
+#'   cluster vs. all other clusters for each gene, and displays significance stars.
+#'   P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
 #'
 #' @importFrom Seurat VariableFeatures Idents GetAssayData
 #' @importFrom dplyr mutate left_join select group_by summarise
 #' @importFrom pheatmap pheatmap
-#' @importFrom stats sd
+#' @importFrom stats sd wilcox.test t.test p.adjust
 #'
 #' @examples
 #' \dontrun{
 #' library(Seurat)
 #' seurat <- YourSeuratObject
 #'
-#' # Simple heatmap by cell type (default "staircase" gene order)
-#' avgHeatmap(seurat, selGenes = c("GeneA", "GeneB", "GeneC"), group_by = "celltype")
-#'
-#' # Heatmap with manually specified gene order
+#' # Simple heatmap with significance stars (higher than average)
 #' avgHeatmap(seurat,
-#'            selGenes = c("GeneC", "GeneA", "GeneB"),
+#'            selGenes = c("GeneA", "GeneB", "GeneC"),
 #'            group_by = "celltype",
-#'            gene_order = c("GeneC", "GeneA", "GeneB"))
+#'            show_significance = TRUE)
 #'
-#' # Heatmap with manually specified cluster (column) order
+#' # Show significance for both higher and lower expression
 #' avgHeatmap(seurat,
 #'            selGenes = c("GeneA", "GeneB"),
 #'            group_by = "celltype",
-#'            cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+#'            show_significance = TRUE,
+#'            significance_direction = "both")
 #'
-#' # Manual cluster order also works with condition_by
+#' # Custom p-value cutoffs
 #' avgHeatmap(seurat,
 #'            selGenes = c("GeneA", "GeneB"),
 #'            group_by = "celltype",
-#'            condition_by = "treatment",
-#'            cluster_order = c("Cluster 3", "Cluster 1", "Cluster 2"))
+#'            show_significance = TRUE,
+#'            pval_cutoffs = c("***" = 0.0001, "**" = 0.001, "*" = 0.01))
 #' }
 #'
 #' @export
@@ -82,8 +91,8 @@ avgHeatmap <- function(seurat,
                        scale_method = "row",
                        cluster_rows = FALSE,
                        cluster_cols = FALSE,
-                       cluster_order = NULL, # <-- NEW
-                       gene_order = NULL,    # <-- NEW
+                       cluster_order = NULL,
+                       gene_order = NULL,
                        show_rownames = TRUE,
                        show_colnames = TRUE,
                        cellwidth = 15,
@@ -94,10 +103,16 @@ avgHeatmap <- function(seurat,
                        gaps_row = NULL,
                        gaps_col = NULL,
                        n_variable_genes = 20,
+                       show_significance = FALSE,
+                       significance_direction = "higher",
+                       significance_test = "wilcox",
+                       pval_cutoffs = c("***" = 0.001, "**" = 0.01, "*" = 0.05),
+                       star_size = 8,
+                       p_adjust_method = "BH",
                        # Old argument names for backward compatibility
                        colVecIdent = NULL,
                        colVecCond = NULL,
-                       ordVec = NULL, # <-- Kept for backward compatibility
+                       ordVec = NULL,
                        gapVecR = NULL,
                        gapVecC = NULL,
                        cc = NULL,
@@ -109,7 +124,6 @@ avgHeatmap <- function(seurat,
   # BACKWARD COMPATIBILITY: Map old arguments to new ones
   # ===========================================================================
 
-  # Map colVecIdent to annotation_colors
   if (!is.null(colVecIdent)) {
     message("Note: 'colVecIdent' is deprecated. Please use 'annotation_colors' instead.")
     if (is.null(annotation_colors)) {
@@ -117,7 +131,6 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map colVecCond to condition_colors
   if (!is.null(colVecCond)) {
     message("Note: 'colVecCond' is deprecated. Please use 'condition_colors' instead.")
     if (is.null(condition_colors)) {
@@ -125,7 +138,6 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map ordVec to cluster_order
   if (!is.null(ordVec)) {
     message("Note: 'ordVec' is deprecated. Please use 'cluster_order' instead.")
     if (is.null(cluster_order)) {
@@ -133,9 +145,7 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map condCol to condition_by (if it's TRUE, try to detect condition column)
   if (!is.null(condCol) && condCol == TRUE && is.null(condition_by)) {
-    # Try to find a 'cond' or 'condition' column in metadata
     if ("cond" %in% colnames(seurat@meta.data)) {
       condition_by <- "cond"
       message("Note: 'condCol=TRUE' detected. Using 'cond' column for condition annotation.")
@@ -145,7 +155,6 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map gapVecR to gaps_row
   if (!is.null(gapVecR)) {
     message("Note: 'gapVecR' is deprecated. Please use 'gaps_row' instead.")
     if (is.null(gaps_row)) {
@@ -153,7 +162,6 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map gapVecC to gaps_col
   if (!is.null(gapVecC)) {
     message("Note: 'gapVecC' is deprecated. Please use 'gaps_col' instead.")
     if (is.null(gaps_col)) {
@@ -161,13 +169,11 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Map cc to cluster_cols
   if (!is.null(cc)) {
     message("Note: 'cc' is deprecated. Please use 'cluster_cols' instead.")
     cluster_cols <- cc
   }
 
-  # Map cr to cluster_rows
   if (!is.null(cr)) {
     message("Note: 'cr' is deprecated. Please use 'cluster_rows' instead.")
     cluster_rows <- cr
@@ -177,15 +183,11 @@ avgHeatmap <- function(seurat,
   # MAIN FUNCTION LOGIC
   # ===========================================================================
 
-  # Handle gene input - can be vector of gene names or data.frame with gene column
-  # If no genes provided, use top variable features
+  # Handle gene input
   if (is.null(selGenes)) {
-    # Get top n highly variable features as default
     if ("SCT" %in% names(seurat@assays)) {
-      # If SCT assay exists, use its variable features
       variable_features <- VariableFeatures(seurat, assay = "SCT")
     } else {
-      # Otherwise use RNA assay variable features
       variable_features <- VariableFeatures(seurat, assay = "RNA")
     }
 
@@ -203,13 +205,13 @@ avgHeatmap <- function(seurat,
     } else if ("geneID" %in% colnames(selGenes)) {
       gene_list <- selGenes$geneID
     } else {
-      gene_list <- selGenes[, 1]  # Use first column if no standard column names
+      gene_list <- selGenes[, 1]
     }
   } else {
     gene_list <- selGenes
   }
 
-  # Set grouping variable - default to active identity
+  # Set grouping variable
   if (is.null(group_by)) {
     group_by <- "ident"
     clusterAssigned <- data.frame(
@@ -229,7 +231,6 @@ avgHeatmap <- function(seurat,
       stop("condition_by '", condition_by, "' not found in seurat metadata")
     }
     clusterAssigned$condition <- seurat@meta.data[[condition_by]]
-    # Create combined identity: celltype_condition
     clusterAssigned$combined_ident <- paste0(clusterAssigned$ident, "_", clusterAssigned$condition)
   }
 
@@ -237,16 +238,13 @@ avgHeatmap <- function(seurat,
   seuratDat <- GetAssayData(seurat, assay = "RNA", slot = "data")
 
   # Find genes in the Seurat object
-  # Handle ENSEMBL IDs if present (assumes format: ENSEMBL.SYMBOL)
   genes <- data.frame(gene = rownames(seurat)) %>%
     mutate(geneID = gsub("^.*\\.", "", gene))
 
-  # Match genes more flexibly
+  # Match genes
   if (all(grepl("^ENSG", gene_list))) {
-    # If input genes are ENSEMBL IDs, match directly
     matched_genes <- genes[genes$gene %in% gene_list, ]
   } else {
-    # If input genes are symbols, match against cleaned gene symbols
     matched_genes <- genes[genes$geneID %in% gene_list | genes$gene %in% gene_list, ]
   }
 
@@ -254,7 +252,7 @@ avgHeatmap <- function(seurat,
     stop("No matching genes found in the Seurat object. Check gene names.")
   }
 
-  # Create expression matrix averaged by identity (and condition if specified)
+  # Create expression matrix averaged by identity
   logNormExpres <- as.data.frame(t(as.matrix(
     seuratDat[matched_genes$gene, ]
   )))
@@ -290,10 +288,10 @@ avgHeatmap <- function(seurat,
 
   logNormExpresMa <- t(logNormExpresMa)
 
-  # Clean up gene names (remove ENSEMBL prefix if present)
+  # Clean up gene names
   rownames(logNormExpresMa) <- gsub("^.*?\\.", "", rownames(logNormExpresMa))
 
-  # Remove genes with zero variance across all groups
+  # Remove genes with zero variance
   zero_var_genes <- apply(logNormExpresMa, 1, sd) == 0
   if (any(zero_var_genes)) {
     logNormExpresMa <- logNormExpresMa[!zero_var_genes, , drop = FALSE]
@@ -301,135 +299,215 @@ avgHeatmap <- function(seurat,
   }
 
   # ===========================================================================
-  # START MODIFIED BLOCK: Column and Row Ordering
+  # SIGNIFICANCE TESTING (NEW)
   # ===========================================================================
 
-  # Apply cluster_order if provided (manually orders columns)
-  if (!is.null(cluster_order)) {
+  significance_matrix <- NULL
 
-    if (!is.null(condition_by)) {
-      # Smart ordering for combined condition_by names
-      message("Applying manual column order (cluster_order) with condition_by grouping.")
+  if (show_significance) {
+    message("Performing significance testing...")
 
-      final_order <- c()
-      current_cols <- colnames(logNormExpresMa)
+    # Create a matrix to store significance symbols
+    significance_matrix <- matrix("", nrow = nrow(logNormExpresMa), ncol = ncol(logNormExpresMa))
+    rownames(significance_matrix) <- rownames(logNormExpresMa)
+    colnames(significance_matrix) <- colnames(logNormExpresMa)
 
-      for (base_cluster in cluster_order) {
-        # Find columns that start with "ClusterName_"
-        # grep() finds matches, value = TRUE returns the names
-        # We sort them to ensure conditions (e.g., _A, _B) are in alphabetical order
-        cols_to_add <- sort(grep(paste0("^", base_cluster, "_"), current_cols, value = TRUE))
+    # Get the raw expression data for statistical testing
+    raw_expression <- as.data.frame(t(as.matrix(seuratDat[matched_genes$gene, ])))
+    raw_expression <- raw_expression %>%
+      mutate(cell = rownames(.)) %>%
+      left_join(clusterAssigned, by = "cell")
 
-        if (length(cols_to_add) > 0) {
-          final_order <- c(final_order, cols_to_add)
-          # Remove these from current_cols so they aren't added again
-          current_cols <- setdiff(current_cols, cols_to_add)
+    # Clean column names to match
+    gene_cols <- setdiff(colnames(raw_expression), c("cell", "ident", "condition", "combined_ident"))
+    clean_gene_names <- gsub("^.*?\\.", "", gene_cols)
+
+    # Determine which grouping variable to use
+    group_var <- if (!is.null(condition_by)) "combined_ident" else "ident"
+
+    # Store p-values for adjustment
+    pval_list <- list()
+    test_info <- list()
+
+    # For each cluster and each gene, perform test
+    test_counter <- 0
+    for (cluster in colnames(logNormExpresMa)) {
+      for (i in seq_along(gene_cols)) {
+        gene_col <- gene_cols[i]
+        gene_name <- clean_gene_names[i]
+
+        # Skip if gene was filtered out
+        if (!gene_name %in% rownames(logNormExpresMa)) next
+
+        # Get expression values
+        cluster_cells <- raw_expression[[group_var]] == cluster
+        in_cluster <- raw_expression[cluster_cells, gene_col]
+        out_cluster <- raw_expression[!cluster_cells, gene_col]
+
+        # Skip if not enough data
+        if (length(in_cluster) < 3 || length(out_cluster) < 3) next
+
+        # Perform statistical test
+        tryCatch({
+          if (significance_test == "wilcox") {
+            test_result <- wilcox.test(in_cluster, out_cluster, alternative = "two.sided")
+          } else if (significance_test == "t.test") {
+            test_result <- t.test(in_cluster, out_cluster, alternative = "two.sided")
+          } else {
+            stop("significance_test must be 'wilcox' or 't.test'")
+          }
+
+          test_counter <- test_counter + 1
+          pval <- test_result$p.value
+          mean_in <- mean(in_cluster)
+          mean_out <- mean(out_cluster)
+          is_higher <- mean_in > mean_out
+
+          # Store for adjustment
+          pval_list[[test_counter]] <- pval
+          test_info[[test_counter]] <- list(
+            gene = gene_name,
+            cluster = cluster,
+            is_higher = is_higher
+          )
+
+        }, error = function(e) {
+          # Skip genes that cause errors
+        })
+      }
+    }
+
+    # Adjust p-values for multiple testing
+    if (length(pval_list) > 0) {
+      if (p_adjust_method == "none") {
+        adjusted_pvals <- unlist(pval_list)
+        message("Using unadjusted p-values (no multiple testing correction)")
+      } else {
+        adjusted_pvals <- p.adjust(unlist(pval_list), method = p_adjust_method)
+        message(sprintf("Adjusted %d p-values using %s method", length(pval_list), p_adjust_method))
+      }
+
+      # Assign significance stars based on adjusted p-values
+      for (j in seq_along(adjusted_pvals)) {
+        info <- test_info[[j]]
+        pval <- adjusted_pvals[j]
+
+        # Determine if we should show based on direction preference
+        should_show <- FALSE
+        if (significance_direction == "higher" && info$is_higher) {
+          should_show <- TRUE
+        } else if (significance_direction == "lower" && !info$is_higher) {
+          should_show <- TRUE
+        } else if (significance_direction == "both") {
+          should_show <- TRUE
         }
-      }
 
-      # Add any remaining columns that didn't match any prefix
-      final_order <- c(final_order, current_cols)
+        if (should_show) {
+          # Sort cutoffs by p-value (most stringent first)
+          sorted_cutoffs <- sort(pval_cutoffs)
 
-      if (length(final_order) == length(colnames(logNormExpresMa))) {
-        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
-      } else {
-        warning("Error applying cluster_order with condition_by. Column name mismatch.")
-      }
-
-    } else {
-      # ORIGINAL logic (no condition_by, exact match)
-      message("Applying manual column order (cluster_order).")
-      # Only reorder columns that exist in the matrix
-      order_valid <- cluster_order[cluster_order %in% colnames(logNormExpresMa)]
-
-      if (length(order_valid) > 0) {
-        # Add any columns not in cluster_order to the end
-        remaining_cols <- setdiff(colnames(logNormExpresMa), order_valid)
-        final_order <- c(order_valid, remaining_cols)
-        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
-      } else {
-        warning("None of the names in 'cluster_order' match the matrix column names.")
+          for (k in seq_along(sorted_cutoffs)) {
+            if (pval < sorted_cutoffs[k]) {
+              significance_matrix[info$gene, info$cluster] <- names(sorted_cutoffs)[k]
+              break
+            }
+          }
+        }
       }
     }
   }
 
-  # Order genes based on user preference or "staircase"
+  # ===========================================================================
+  # Column and Row Ordering
+  # ===========================================================================
+
+  # Apply cluster_order if provided
+  if (!is.null(cluster_order)) {
+    if (!is.null(condition_by)) {
+      message("Applying manual column order (cluster_order) with condition_by grouping.")
+      final_order <- c()
+      current_cols <- colnames(logNormExpresMa)
+
+      for (base_cluster in cluster_order) {
+        cols_to_add <- sort(grep(paste0("^", base_cluster, "_"), current_cols, value = TRUE))
+        if (length(cols_to_add) > 0) {
+          final_order <- c(final_order, cols_to_add)
+          current_cols <- setdiff(current_cols, cols_to_add)
+        }
+      }
+      final_order <- c(final_order, current_cols)
+
+      if (length(final_order) == length(colnames(logNormExpresMa))) {
+        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+        if (!is.null(significance_matrix)) {
+          significance_matrix <- significance_matrix[, final_order, drop = FALSE]
+        }
+      }
+    } else {
+      message("Applying manual column order (cluster_order).")
+      order_valid <- cluster_order[cluster_order %in% colnames(logNormExpresMa)]
+      if (length(order_valid) > 0) {
+        remaining_cols <- setdiff(colnames(logNormExpresMa), order_valid)
+        final_order <- c(order_valid, remaining_cols)
+        logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
+        if (!is.null(significance_matrix)) {
+          significance_matrix <- significance_matrix[, final_order, drop = FALSE]
+        }
+      }
+    }
+  }
+
+  # Order genes
   if (!cluster_rows) {
-
     if (!is.null(gene_order)) {
-      # NEW: Apply manual gene order
       message("Applying manual gene order (gene_order).")
-
-      # Clean the input gene list (in case it has ENSEMBL prefixes)
       cleaned_gene_list <- gsub("^.*?\\.", "", gene_order)
-
-      # Get genes from list that are in the matrix, in list order
       ordered_genes_from_list <- cleaned_gene_list[cleaned_gene_list %in% rownames(logNormExpresMa)]
-
-      # Get genes in the matrix that were NOT in the user's list
       remaining_genes <- setdiff(rownames(logNormExpresMa), ordered_genes_from_list)
-
-      # Combine them: User's genes first, then the rest
       final_gene_order <- c(ordered_genes_from_list, remaining_genes)
 
-      if (length(final_gene_order) == 0) {
-        warning("No genes from 'gene_order' found after filtering. Skipping row ordering.")
-      } else {
+      if (length(final_gene_order) > 0) {
         logNormExpresMa <- logNormExpresMa[final_gene_order, , drop = FALSE]
+        if (!is.null(significance_matrix)) {
+          significance_matrix <- significance_matrix[final_gene_order, , drop = FALSE]
+        }
       }
-
     } else {
-      # ORIGINAL STAIRCASE LOGIC (if gene_order is NULL)
       message("Ordering genes by cluster of max expression (default).")
-
-      # Find which cluster has max expression for each gene
       max_clusters <- apply(logNormExpresMa, 1, function(x) colnames(logNormExpresMa)[which.max(x)])
-
-      # Get the current column order (which may have been set by cluster_order)
       current_col_order <- colnames(logNormExpresMa)
-
-      # Order genes by their max-expressing cluster
-      gene_order_factor <- names(sort(factor(max_clusters, levels = current_col_order)))
-
-      # Within each cluster group, order genes by decreasing max expression
       ordered_genes <- c()
+
       for (cluster in current_col_order) {
         cluster_genes <- names(max_clusters[max_clusters == cluster])
         if (length(cluster_genes) > 0) {
-          # Order by decreasing expression in that cluster
           cluster_gene_order <- cluster_genes[order(logNormExpresMa[cluster_genes, cluster], decreasing = TRUE)]
           ordered_genes <- c(ordered_genes, cluster_gene_order)
         }
       }
 
-      # Reorder the matrix
       if (length(ordered_genes) > 0) {
         logNormExpresMa <- logNormExpresMa[ordered_genes, , drop = FALSE]
+        if (!is.null(significance_matrix)) {
+          significance_matrix <- significance_matrix[ordered_genes, , drop = FALSE]
+        }
       }
     }
   }
 
   # ===========================================================================
-  # END MODIFIED BLOCK
+  # Color Setup
   # ===========================================================================
 
-
-  # Set default color palette for heatmap
   if (is.null(color_palette)) {
     color_palette <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(50)
   }
 
-  # ===========================================================================
-  # CREATE ANNOTATION DATA FRAME
-  # ===========================================================================
-
+  # Create annotation
   if (!is.null(condition_by)) {
-    # Parse combined identities back into celltype and condition
     col_names <- colnames(logNormExpresMa)
-
-    # Extract celltype and condition from combined names
-    celltype_vec <- gsub("_[^_]*$", "", col_names)  # Remove last underscore part
-    condition_vec <- gsub("^.*_", "", col_names)    # Get last underscore part
+    celltype_vec <- gsub("_[^_]*$", "", col_names)
+    condition_vec <- gsub("^.*_", "", col_names)
 
     annotation_col <- data.frame(
       Celltype = celltype_vec,
@@ -437,28 +515,20 @@ avgHeatmap <- function(seurat,
       row.names = col_names
     )
 
-    # Get unique values for color assignment
     celltypes_present <- unique(celltype_vec)
     conditions_present <- unique(condition_vec)
     n_celltypes <- length(celltypes_present)
     n_conditions <- length(conditions_present)
-
   } else {
-    # Simple annotation without condition
     annotation_col <- data.frame(
       Group = colnames(logNormExpresMa),
       row.names = colnames(logNormExpresMa)
     )
-
     groups_present <- unique(annotation_col$Group)
     n_groups <- length(groups_present)
   }
 
-  # ===========================================================================
-  # SETUP ANNOTATION COLORS
-  # ===========================================================================
-
-  # Define color palettes
+  # Color palettes
   disease_colors <- c("#dfc27d", "#BE3144", "#202547", "#355C7D", "#779d8d")
   fibroblast_colors <- c("#D53E4F", "#f4a582", "#ff7b7b", "#8e0b00", "#FEE08B",
                          "#42090D", "#FF7B00", "#FFF4DF")
@@ -479,9 +549,7 @@ avgHeatmap <- function(seurat,
   )
 
   if (!is.null(condition_by)) {
-    # Handle colors for dual annotation (celltype + condition)
-
-    # === CELLTYPE COLORS ===
+    # Handle dual annotation colors
     if (!is.null(annotation_colors)) {
       if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
         if (!is.null(names(annotation_colors))) {
@@ -512,7 +580,6 @@ avgHeatmap <- function(seurat,
         }
       }
     } else {
-      # Auto-select palette for celltypes
       if (n_celltypes <= 5 && any(grepl("healthy|explant|visit", celltypes_present, ignore.case = TRUE))) {
         celltype_colors <- disease_colors[1:n_celltypes]
       } else if (n_celltypes <= 8 && any(grepl("Fb|Periv|VSMC", celltypes_present, ignore.case = TRUE))) {
@@ -529,29 +596,14 @@ avgHeatmap <- function(seurat,
       names(celltype_colors) <- celltypes_present
     }
 
-    # === CONDITION COLORS ===
     if (!is.null(condition_colors)) {
       if (!is.null(names(condition_colors))) {
         cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
         if (length(cond_colors) < n_conditions) {
           missing <- setdiff(conditions_present, names(cond_colors))
-          default_cols <- c(
-            "steelblue",     # blue
-            "orange",        # orange
-            "purple",        # purple
-            "forestgreen",   # green
-            "firebrick",     # red
-            "goldenrod",     # yellow/gold
-            "turquoise",     # cyan-ish
-            "violet",        # lighter purple
-            "darkolivegreen", # muted green
-            "coral",         # pinkish orange
-            "slateblue",     # darker blue
-            "tomato",        # bright red
-            "mediumorchid", # pink/purple
-            "darkgoldenrod", # darker yellow/brown
-            "cadetblue"      # muted blue
-          )[1:length(missing)]
+          default_cols <- c("steelblue", "orange", "purple", "forestgreen", "firebrick",
+                            "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
+                            "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue")[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
         }
@@ -560,24 +612,9 @@ avgHeatmap <- function(seurat,
         names(cond_colors) <- conditions_present
       }
     } else {
-      # Default condition colors
-      default_cond_colors <- c(
-        "steelblue",     # blue
-        "orange",        # orange
-        "purple",        # purple
-        "forestgreen",   # green
-        "firebrick",     # red
-        "goldenrod",     # yellow/gold
-        "turquoise",     # cyan-ish
-        "violet",        # lighter purple
-        "darkolivegreen", # muted green
-        "coral",         # pinkish orange
-        "slateblue",     # darker blue
-        "tomato",        # bright red
-        "mediumorchid", # pink/purple
-        "darkgoldenrod", # darker yellow/brown
-        "cadetblue"      # muted blue
-      )
+      default_cond_colors <- c("steelblue", "orange", "purple", "forestgreen", "firebrick",
+                               "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
+                               "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue")
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present
     }
@@ -586,12 +623,9 @@ avgHeatmap <- function(seurat,
       Celltype = celltype_colors,
       Condition = cond_colors
     )
-
   } else {
-    # Handle colors for single annotation (group only)
-
+    # Single annotation colors
     if (is.null(annotation_colors)) {
-      # Auto-select palette
       if (n_groups <= 5 && any(grepl("healthy|explant|visit", groups_present, ignore.case = TRUE))) {
         group_colors <- disease_colors[1:n_groups]
       } else if (n_groups <= 8 && any(grepl("Fb|Periv|VSMC", groups_present, ignore.case = TRUE))) {
@@ -607,9 +641,7 @@ avgHeatmap <- function(seurat,
       }
       names(group_colors) <- groups_present
       ann_colors_final <- list(Group = group_colors)
-
     } else {
-      # Process user-provided colors
       if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
         if (!is.null(names(annotation_colors))) {
           group_colors <- annotation_colors[names(annotation_colors) %in% groups_present]
@@ -642,21 +674,39 @@ avgHeatmap <- function(seurat,
     }
   }
 
-  # Generate and return heatmap
-  p <- pheatmap(logNormExpresMa,
-                scale = scale_method,
-                cluster_rows = cluster_rows,
-                cluster_cols = cluster_cols,
-                color = color_palette,
-                annotation_col = annotation_col,
-                annotation_colors = ann_colors_final,
-                cellwidth = cellwidth,
-                cellheight = cellheight,
-                show_rownames = show_rownames,
-                show_colnames = show_colnames,
-                gaps_row = gaps_row,
-                gaps_col = gaps_col,
-                ...)
+  # ===========================================================================
+  # Generate Heatmap
+  # ===========================================================================
+
+  # Prepare parameters for pheatmap
+  pheatmap_params <- list(
+    mat = logNormExpresMa,
+    scale = scale_method,
+    cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols,
+    color = color_palette,
+    annotation_col = annotation_col,
+    annotation_colors = ann_colors_final,
+    cellwidth = cellwidth,
+    cellheight = cellheight,
+    show_rownames = show_rownames,
+    show_colnames = show_colnames,
+    gaps_row = gaps_row,
+    gaps_col = gaps_col
+  )
+
+  # Add significance stars if requested
+  if (show_significance && !is.null(significance_matrix)) {
+    pheatmap_params$display_numbers <- significance_matrix
+    pheatmap_params$number_color <- "black"
+    pheatmap_params$fontsize_number <- star_size
+  }
+
+  # Add any additional arguments
+  pheatmap_params <- c(pheatmap_params, list(...))
+
+  # Generate heatmap
+  p <- do.call(pheatmap, pheatmap_params)
 
   return(p)
 }

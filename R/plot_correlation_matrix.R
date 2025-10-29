@@ -69,6 +69,14 @@ plot_correlation_matrix <- function(data = NULL,
 
   # Helper function to clean variable names
   clean_variable_names <- function(names) {
+    new_name <- gsub("k__", "", new_name) # also clean taxonomic levels
+    new_name <- gsub("p__", "", new_name)
+    new_name <- gsub("c__", "", new_name)
+    new_name <- gsub("o__", "", new_name)
+    new_name <- gsub("f__", "", new_name)
+    new_name <- gsub("g__", "", new_name)
+    new_name <- gsub("s__", "", new_name)
+
     names <- gsub("_", " ", names)
     split_words <- strsplit(names, " ")
     cleaned <- lapply(split_words, function(words) {

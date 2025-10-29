@@ -89,7 +89,7 @@ Alternatively, provide a named vector which will be used for the Group annotatio
 
 \item{pval_cutoffs}{Named numeric vector of p-value cutoffs. Default is \code{c("***" = 0.001, "**" = 0.01, "*" = 0.05)}.}
 
-\item{star_size}{Numeric, font size for significance stars. Default is \code{4}.}
+\item{star_size}{Numeric, font size for significance stars. Default is \code{8}.}
 
 \item{p_adjust_method}{Method for p-value adjustment. Default is \code{"BH"} (Benjamini-Hochberg/FDR).
 Use \code{"none"} for unadjusted p-values. See \code{?p.adjust} for other options.}
@@ -115,9 +115,13 @@ orders genes by cluster of maximum expression to create a "staircase" pattern.
 (When \code{condition_by} is used, this groups columns based on the cluster prefix).
 \item Automatically selects color palettes based on group names and number of groups.
 \item When \code{condition_by} is specified, creates combined groups (e.g., "Cluster0_ConditionA").
-\item When \code{show_significance = TRUE}, performs Wilcoxon rank-sum test (or t-test) comparing each
-cluster vs. all other clusters for each gene, and displays significance stars.
-P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
+\item When \code{show_significance = TRUE}:
+\itemize{
+\item If \code{condition_by} is \code{NULL}: performs test comparing each cluster vs. all other clusters.
+\item If \code{condition_by} is set: performs test comparing each group (e.g., "Cluster0_CondA")
+vs. all \emph{other groups within that same base cluster} (e.g., "Cluster0_CondB", "Cluster0_CondC").
+\item P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
+}
 }
 }
 \examples{

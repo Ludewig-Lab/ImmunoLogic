@@ -19,7 +19,7 @@
 #' @param cellheight Numeric, height of each cell in the heatmap. Default is `10`.
 #' @param color_palette Color vector for the heatmap. Default is a blue-white-red gradient.
 #' @param annotation_colors Named list of colors for annotations. Can contain elements named 'Group' and 'Condition'.
-#'   Alternatively, provide a named vector which will be used for the Group annotation.
+#'    Alternatively, provide a named vector which will be used for the Group annotation.
 #' @param condition_colors Named vector of colors for condition annotation. Only used if `condition_by` is specified.
 #' @param gaps_row Optional vector specifying rows after which to insert gaps. Default is `NULL`.
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
@@ -28,9 +28,9 @@
 #' @param significance_direction Direction for showing significance: "higher" (default), "lower", or "both".
 #' @param significance_test Statistical test to use: "wilcox" (default) or "t.test".
 #' @param pval_cutoffs Named numeric vector of p-value cutoffs. Default is `c("***" = 0.001, "**" = 0.01, "*" = 0.05)`.
-#' @param star_size Numeric, font size for significance stars. Default is `4`.
+#' @param star_size Numeric, font size for significance stars. Default is `8`.
 #' @param p_adjust_method Method for p-value adjustment. Default is `"BH"` (Benjamini-Hochberg/FDR).
-#'   Use `"none"` for unadjusted p-values. See `?p.adjust` for other options.
+#'    Use `"none"` for unadjusted p-values. See `?p.adjust` for other options.
 #' @param ... Additional arguments passed to [pheatmap::pheatmap()].
 #'
 #' @return A `pheatmap` object.
@@ -41,15 +41,17 @@
 #' - Handles gene names as symbols or ENSEMBL IDs.
 #' - Automatically removes genes with zero variance across groups.
 #' - If `cluster_rows = FALSE` and `gene_order = NULL` (default),
-#'   orders genes by cluster of maximum expression to create a "staircase" pattern.
+#'    orders genes by cluster of maximum expression to create a "staircase" pattern.
 #' - If `gene_order` is provided, genes are kept in the user-provided order.
 #' - If `cluster_order` is provided, clusters are kept in the user-provided order.
-#'   (When `condition_by` is used, this groups columns based on the cluster prefix).
+#'    (When `condition_by` is used, this groups columns based on the cluster prefix).
 #' - Automatically selects color palettes based on group names and number of groups.
 #' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
-#' - When `show_significance = TRUE`, performs Wilcoxon rank-sum test (or t-test) comparing each
-#'   cluster vs. all other clusters for each gene, and displays significance stars.
-#'   P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
+#' - When `show_significance = TRUE`:
+#'   - If `condition_by` is `NULL`: performs test comparing each cluster vs. all other clusters.
+#'   - If `condition_by` is set: performs test comparing each group (e.g., "Cluster0_CondA")
+#'     vs. all *other groups within that same base cluster* (e.g., "Cluster0_CondB", "Cluster0_CondC").
+#'   - P-values are adjusted for multiple testing using the Benjamini-Hochberg method (FDR) by default.
 #'
 #' @importFrom Seurat VariableFeatures Idents GetAssayData
 #' @importFrom dplyr mutate left_join select group_by summarise
@@ -299,7 +301,7 @@ avgHeatmap <- function(seurat,
   }
 
   # ===========================================================================
-  # SIGNIFICANCE TESTING (NEW)
+  # SIGNIFICANCE TESTING (MODIFIED)
   # ===========================================================================
 
   significance_matrix <- NULL
@@ -342,7 +344,34 @@ avgHeatmap <- function(seurat,
         # Get expression values
         cluster_cells <- raw_expression[[group_var]] == cluster
         in_cluster <- raw_expression[cluster_cells, gene_col]
-        out_cluster <- raw_expression[!cluster_cells, gene_col]
+
+        # --- MODIFICATION START ---
+        # Check if we are in the 'condition_by' mode
+        if (!is.null(condition_by)) {
+          # New logic: Compare only within the same base cluster (e.g., "Fb1")
+
+          # 1. Get base cluster (e.g., "Fb1" from "Fb1_donorheart")
+          base_cluster <- gsub("_[^_]*$", "", cluster)
+
+          # 2. Find all cluster names from the heatmap
+          all_heatmap_clusters <- colnames(logNormExpresMa)
+
+          # 3. Find all "siblings" (e.g., "Fb1_donorheart", "Fb1_explant", "Fb1_control")
+          sibling_clusters <- grep(paste0("^", base_cluster, "_"), all_heatmap_clusters, value = TRUE)
+
+          # 4. Find the *other* siblings to compare against
+          other_sibling_clusters <- setdiff(sibling_clusters, cluster)
+
+          # 5. Get the cells belonging to these other siblings
+          out_cells <- raw_expression[[group_var]] %in% other_sibling_clusters
+          out_cluster <- raw_expression[out_cells, gene_col]
+
+        } else {
+          # Original logic: compare cluster vs. all other clusters
+          out_cluster <- raw_expression[!cluster_cells, gene_col]
+        }
+        # --- MODIFICATION END ---
+
 
         # Skip if not enough data
         if (length(in_cluster) < 3 || length(out_cluster) < 3) next
@@ -359,9 +388,12 @@ avgHeatmap <- function(seurat,
 
           test_counter <- test_counter + 1
           pval <- test_result$p.value
-          mean_in <- mean(in_cluster)
-          mean_out <- mean(out_cluster)
-          is_higher <- mean_in > mean_out
+
+          # Use median for comparison, as requested for wilcox
+          # (mean is also fine for direction, but median is more robust)
+          median_in <- median(in_cluster)
+          median_out <- median(out_cluster)
+          is_higher <- median_in > median_out
 
           # Store for adjustment
           pval_list[[test_counter]] <- pval
@@ -706,7 +738,7 @@ avgHeatmap <- function(seurat,
   pheatmap_params <- c(pheatmap_params, list(...))
 
   # Generate heatmap
-  p <- do.call(pheatmap, pheatmap_params)
+  p <- do.call(pheatmap::pheatmap, pheatmap_params)
 
   return(p)
 }

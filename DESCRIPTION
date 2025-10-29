@@ -1,9 +1,19 @@
 Package: ImmunoLogic
 Title: Misc Tools of the Institute of Immunobiology, H-OCH KSSG St. Gallen
-Version: 0.0.1.5
+Version: 0.0.1.6
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+    person("Roman", "Stadler", , "roman.stadler@uzh.com", role = c("aut", "cre"))
+Description: Provides a suite of tools focused on the analysis and
+    visualization of single-cell RNA-seq data from the 'Seurat'
+    package. Key features include an interactive 'Shiny' application for
+    exploring 'Seurat' objects ('SingleCellBrowserSeurat3') and a
+    function for generating complex average expression heatmaps with
+    statistical significance ('avgHeatmap'). The package also offers
+    advanced statistical modeling capabilities, including functions to
+    fit ('fit_mmlt_flexible') and diagnose ('plot_gof') flexible
+    multivariate maximum likelihood transformation (MMLT) models via the
+    'tram' package. Additional utilities support creating detailed
+    correlation matrices and formatting p-values for publication.
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8

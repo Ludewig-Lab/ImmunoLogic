@@ -633,9 +633,13 @@ avgHeatmap <- function(seurat,
         cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
         if (length(cond_colors) < n_conditions) {
           missing <- setdiff(conditions_present, names(cond_colors))
-          default_cols <- c("steelblue", "orange", "purple", "forestgreen", "firebrick",
-                            "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
-                            "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue")[1:length(missing)]
+          default_cols <- c(
+            "steelblue", "orange", "purple", "forestgreen", "firebrick",
+            "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
+            "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
+            "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
+            "rosybrown", "lightblue", "limegreen", "maroon", "peru"
+            )[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
         }
@@ -644,9 +648,13 @@ avgHeatmap <- function(seurat,
         names(cond_colors) <- conditions_present
       }
     } else {
-      default_cond_colors <- c("steelblue", "orange", "purple", "forestgreen", "firebrick",
-                               "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
-                               "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue")
+      default_cond_colors <- c(
+        "steelblue", "orange", "purple", "forestgreen", "firebrick",
+        "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
+        "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
+        "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
+        "rosybrown", "lightblue", "limegreen", "maroon", "peru"
+         )
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present
     }

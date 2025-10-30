@@ -69,7 +69,7 @@ plot_correlation_matrix <- function(data = NULL,
 
   # Helper function to clean variable names
   clean_variable_names <- function(names) {
-    new_name <- gsub("k__", "", new_name) # also clean taxonomic levels
+    new_name <- gsub("k__", "", names) # also clean taxonomic levels
     new_name <- gsub("p__", "", new_name)
     new_name <- gsub("c__", "", new_name)
     new_name <- gsub("o__", "", new_name)
@@ -77,8 +77,8 @@ plot_correlation_matrix <- function(data = NULL,
     new_name <- gsub("g__", "", new_name)
     new_name <- gsub("s__", "", new_name)
 
-    names <- gsub("_", " ", names)
-    split_words <- strsplit(names, " ")
+    new_name <- gsub("_", " ", new_name)
+    split_words <- strsplit(new_name, " ")
     cleaned <- lapply(split_words, function(words) {
       sapply(words, function(w) {
         if (nchar(w) <= 3) {
@@ -163,6 +163,24 @@ plot_correlation_matrix <- function(data = NULL,
     }
   }
 
+  # Store original par settings
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par))
+
+  # Calculate legend space needed (as fraction of plot width)
+  n_vars <- ncol(cor_matrix)
+  has_significant <- any(!is.na(p_matrix) & p_matrix < sig.level)
+  n_legends <- if(has_significant) 2 else 1
+
+  # Adjust right margin to accommodate legends
+  # Each legend needs space for: width + text + gap
+  legend_space_per <- legend_width + legend_text_margin + 0.3
+  total_legend_space <- n_legends * legend_space_per
+
+  # Set margins: bottom, left, top, right (in margin lines)
+  # Minimize left margin, increase right margin for legends
+  par(mar = c(1, 0.5, 1, 8), xpd = FALSE)
+
   cp <- corrplot::corrplot(cor_matrix,
                            p.mat = p_matrix,
                            method = method,
@@ -176,6 +194,10 @@ plot_correlation_matrix <- function(data = NULL,
                            cl.pos = "n",
                            sig.level = sig.level,
                            col= colorRampPalette(c("blue", "white", "red"))(100))
+
+  # Now allow drawing outside plot region for legends
+  par(xpd = TRUE)
+
   cp$corrPos -> p1
   # text(p1$x, p1$y, round(p1$corr, 2), cex = number_size)
   text_colors <- ifelse(!is.na(p1$corr) & p1$corr < -0.5 & p1$p.value < sig.level, "white", "black")
@@ -296,10 +318,10 @@ plot_correlation_matrix <- function(data = NULL,
   require(stringr)
   # Add correlation legend labels and title
   text(legend_x_start + legend_width/2, legend_y_start + legend_title_offset,
-       paste(stringr::str_to_title(correlation_type),"\nCorrelation"), cex = number_size, font = 2, xpd = TRUE)
-  text(legend_x_start + legend_width + legend_text_margin, legend_y_start, "1", cex = number_size, xpd = TRUE)
-  text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height/2, "0", cex = number_size, xpd = TRUE)
-  text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, "-1", cex = number_size, xpd = TRUE)
+       paste(stringr::str_to_title(correlation_type),"\nCorrelation"), cex = number_size, font = 2)
+  text(legend_x_start + legend_width + legend_text_margin, legend_y_start, "1", cex = number_size)
+  text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height/2, "0", cex = number_size)
+  text(legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, "-1", cex = number_size)
 
   # Add custom p-value legend if there are significant values
   if (nrow(significant) > 0) {
@@ -323,10 +345,11 @@ plot_correlation_matrix <- function(data = NULL,
 
     # Add p-value legend labels and title
     text(pval_legend_x_start + legend_width/2, legend_y_start + legend_title_offset,
-         "P-value", cex = number_size, font = 2, xpd = TRUE)
-    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start, "0.0", cex = number_size, xpd = TRUE)
-    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height/2, paste(sig.level/2), cex = number_size, xpd = TRUE)
-    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, paste(sig.level), cex = number_size, xpd = TRUE)
+         "P-value", cex = number_size, font = 2)
+    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start, "0.0", cex = number_size)
+    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height/2, paste(sig.level/2), cex = number_size)
+    text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, paste(sig.level), cex = number_size)
   }
 
+  invisible(pos)
 }

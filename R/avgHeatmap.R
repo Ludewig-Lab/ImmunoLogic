@@ -23,6 +23,10 @@
 #' @param condition_colors Named vector of colors for condition annotation. Only used if `condition_by` is specified.
 #' @param gaps_row Optional vector specifying rows after which to insert gaps. Default is `NULL`.
 #' @param gaps_col Optional vector specifying columns after which to insert gaps. Default is `NULL`.
+#' @param group_legend_title Optional string to set the title for the main group/cluster legend.
+#'   Defaults to "Group" (or "Celltype" if `condition_by` is used).
+#' @param condition_legend_title Optional string to set the title for the condition legend.
+#'   Only used if `condition_by` is specified. Defaults to "Condition".
 #' @param n_variable_genes Number of top variable genes to use if `selGenes` is `NULL`. Default is `20`.
 #' @param show_significance Logical, whether to perform statistical testing and show significance stars. Default is `FALSE`.
 #' @param significance_direction Direction for showing significance: "higher" (default), "lower", or "both".
@@ -41,10 +45,10 @@
 #' - Handles gene names as symbols or ENSEMBL IDs.
 #' - Automatically removes genes with zero variance across groups.
 #' - If `cluster_rows = FALSE` and `gene_order = NULL` (default),
-#'    orders genes by cluster of maximum expression to create a "staircase" pattern.
+#'     orders genes by cluster of maximum expression to create a "staircase" pattern.
 #' - If `gene_order` is provided, genes are kept in the user-provided order.
 #' - If `cluster_order` is provided, clusters are kept in the user-provided order.
-#'    (When `condition_by` is used, this groups columns based on the cluster prefix).
+#'     (When `condition_by` is used, this groups columns based on the cluster prefix).
 #' - Automatically selects color palettes based on group names and number of groups.
 #' - When `condition_by` is specified, creates combined groups (e.g., "Cluster0_ConditionA").
 #' - When `show_significance = TRUE`:
@@ -69,19 +73,13 @@
 #'            group_by = "celltype",
 #'            show_significance = TRUE)
 #'
-#' # Show significance for both higher and lower expression
+#' # Example with custom legend titles
 #' avgHeatmap(seurat,
 #'            selGenes = c("GeneA", "GeneB"),
 #'            group_by = "celltype",
-#'            show_significance = TRUE,
-#'            significance_direction = "both")
-#'
-#' # Custom p-value cutoffs
-#' avgHeatmap(seurat,
-#'            selGenes = c("GeneA", "GeneB"),
-#'            group_by = "celltype",
-#'            show_significance = TRUE,
-#'            pval_cutoffs = c("***" = 0.0001, "**" = 0.001, "*" = 0.01))
+#'            condition_by = "treatment",
+#'            group_legend_title = "Cell Type",
+#'            condition_legend_title = "Treatment")
 #' }
 #'
 #' @export
@@ -104,6 +102,8 @@ avgHeatmap <- function(seurat,
                        condition_colors = NULL,
                        gaps_row = NULL,
                        gaps_col = NULL,
+                       group_legend_title = NULL,
+                       condition_legend_title = NULL,
                        n_variable_genes = 20,
                        show_significance = FALSE,
                        significance_direction = "higher",
@@ -541,22 +541,38 @@ avgHeatmap <- function(seurat,
     celltype_vec <- gsub("_[^_]*$", "", col_names)
     condition_vec <- gsub("^.*_", "", col_names)
 
+    ## --- MODIFIED BLOCK START --- ##
+    # Determine legend titles
+    final_group_name <- if (!is.null(group_legend_title)) group_legend_title else "Celltype"
+    final_cond_name <- if (!is.null(condition_legend_title)) condition_legend_title else "Condition"
+
     annotation_col <- data.frame(
-      Celltype = celltype_vec,
-      Condition = condition_vec,
+      GroupColumn = celltype_vec,     # Placeholder name
+      ConditionColumn = condition_vec, # Placeholder name
       row.names = col_names
     )
+    # Set final names
+    colnames(annotation_col) <- c(final_group_name, final_cond_name)
+    ## --- MODIFIED BLOCK END --- ##
 
     celltypes_present <- unique(celltype_vec)
     conditions_present <- unique(condition_vec)
     n_celltypes <- length(celltypes_present)
     n_conditions <- length(conditions_present)
   } else {
+    ## --- MODIFIED BLOCK START --- ##
+    # Determine legend title
+    final_group_name <- if (!is.null(group_legend_title)) group_legend_title else "Group"
+
     annotation_col <- data.frame(
       Group = colnames(logNormExpresMa),
       row.names = colnames(logNormExpresMa)
     )
-    groups_present <- unique(annotation_col$Group)
+    # Set final name
+    colnames(annotation_col) <- final_group_name
+    ## --- MODIFIED BLOCK END --- ##
+
+    groups_present <- unique(annotation_col[[final_group_name]])
     n_groups <- length(groups_present)
   }
 
@@ -639,7 +655,7 @@ avgHeatmap <- function(seurat,
             "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
             "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
             "rosybrown", "lightblue", "limegreen", "maroon", "peru"
-            )[1:length(missing)]
+          )[1:length(missing)]
           names(default_cols) <- missing
           cond_colors <- c(cond_colors, default_cols)
         }
@@ -654,15 +670,20 @@ avgHeatmap <- function(seurat,
         "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
         "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
         "rosybrown", "lightblue", "limegreen", "maroon", "peru"
-         )
+      )
       cond_colors <- default_cond_colors[1:n_conditions]
       names(cond_colors) <- conditions_present
     }
 
+    ## --- MODIFIED BLOCK START --- ##
     ann_colors_final <- list(
-      Celltype = celltype_colors,
-      Condition = cond_colors
+      celltype_colors,
+      cond_colors
     )
+    # Set names dynamically based on user input or defaults
+    names(ann_colors_final) <- c(final_group_name, final_cond_name)
+    ## --- MODIFIED BLOCK END --- ##
+
   } else {
     # Single annotation colors
     if (is.null(annotation_colors)) {
@@ -680,7 +701,8 @@ avgHeatmap <- function(seurat,
         group_colors <- c(large_palette, rainbow(n_groups - length(large_palette)))
       }
       names(group_colors) <- groups_present
-      ann_colors_final <- list(Group = group_colors)
+      ann_colors_final <- list(group_colors)
+      names(ann_colors_final) <- final_group_name
     } else {
       if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
         if (!is.null(names(annotation_colors))) {
@@ -698,7 +720,8 @@ avgHeatmap <- function(seurat,
           group_colors <- annotation_colors[1:n_groups]
           names(group_colors) <- groups_present
         }
-        ann_colors_final <- list(Group = group_colors)
+        ann_colors_final <- list(group_colors)
+        names(ann_colors_final) <- final_group_name
 
       } else if (is.list(annotation_colors)) {
         if ("Group" %in% names(annotation_colors)) {
@@ -709,7 +732,8 @@ avgHeatmap <- function(seurat,
         if (!is.null(names(group_colors))) {
           group_colors <- group_colors[names(group_colors) %in% groups_present]
         }
-        ann_colors_final <- list(Group = group_colors)
+        ann_colors_final <- list(group_colors)
+        names(ann_colors_final) <- final_group_name
       }
     }
   }

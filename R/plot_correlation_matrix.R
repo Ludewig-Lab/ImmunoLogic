@@ -351,5 +351,9 @@ plot_correlation_matrix <- function(data = NULL,
     text(pval_legend_x_start + legend_width + legend_text_margin, legend_y_start - legend_height, paste(sig.level), cex = number_size)
   }
 
+  # Crop the plot to remove excess white space
+  plot_right_edge <- legend_x_start + legend_width * n_legends + 1
+  par(usr = c(plot_dims[1], plot_right_edge, plot_dims[3], plot_dims[4]))
+
   invisible(pos)
 }

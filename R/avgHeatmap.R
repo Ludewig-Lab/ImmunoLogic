@@ -120,6 +120,7 @@ avgHeatmap <- function(seurat,
                        cc = NULL,
                        cr = NULL,
                        condCol = NULL,
+                       return_ggplot = TRUE,
                        ...) {
 
   # ===========================================================================
@@ -772,5 +773,9 @@ avgHeatmap <- function(seurat,
   # Generate heatmap
   p <- do.call(pheatmap::pheatmap, pheatmap_params)
 
-  return(p)
+  if (return_ggplot) {
+    return(ggplotify::as.ggplot(p$gtable))
+  } else {
+    return(p)
+  }
 }

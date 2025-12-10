@@ -23,6 +23,8 @@ avgHeatmap(
   condition_colors = NULL,
   gaps_row = NULL,
   gaps_col = NULL,
+  group_legend_title = NULL,
+  condition_legend_title = NULL,
   n_variable_genes = 20,
   show_significance = FALSE,
   significance_direction = "higher",
@@ -38,6 +40,7 @@ avgHeatmap(
   cc = NULL,
   cr = NULL,
   condCol = NULL,
+  return_ggplot = TRUE,
   ...
 )
 }
@@ -78,6 +81,12 @@ Alternatively, provide a named vector which will be used for the Group annotatio
 \item{gaps_row}{Optional vector specifying rows after which to insert gaps. Default is \code{NULL}.}
 
 \item{gaps_col}{Optional vector specifying columns after which to insert gaps. Default is \code{NULL}.}
+
+\item{group_legend_title}{Optional string to set the title for the main group/cluster legend.
+Defaults to "Group" (or "Celltype" if \code{condition_by} is used).}
+
+\item{condition_legend_title}{Optional string to set the title for the condition legend.
+Only used if \code{condition_by} is specified. Defaults to "Condition".}
 
 \item{n_variable_genes}{Number of top variable genes to use if \code{selGenes} is \code{NULL}. Default is \code{20}.}
 
@@ -135,19 +144,13 @@ avgHeatmap(seurat,
            group_by = "celltype",
            show_significance = TRUE)
 
-# Show significance for both higher and lower expression
+# Example with custom legend titles
 avgHeatmap(seurat,
            selGenes = c("GeneA", "GeneB"),
            group_by = "celltype",
-           show_significance = TRUE,
-           significance_direction = "both")
-
-# Custom p-value cutoffs
-avgHeatmap(seurat,
-           selGenes = c("GeneA", "GeneB"),
-           group_by = "celltype",
-           show_significance = TRUE,
-           pval_cutoffs = c("***" = 0.0001, "**" = 0.001, "*" = 0.01))
+           condition_by = "treatment",
+           group_legend_title = "Cell Type",
+           condition_legend_title = "Treatment")
 }
 
 }

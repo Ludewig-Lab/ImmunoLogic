@@ -49,27 +49,6 @@ point.
 \code{formatPval} internally uses \code{\link[base]{format}} whereas
 \code{formatPvalStrict} uses \code{\link[base]{formatC}}.
 }
-\examples{
-
-x <- c(1e-8, 0.00568, 0.0345, 0.885)
-biostatUZH::formatPval(x)  # "< 0.0001" "0.006" "0.035" "0.89"
-biostatUZH::formatPvalStrict(x, digits = 2) # "< 0.01" "< 0.01" "0.03" "0.89"
-
-## compare to formatting of other packages
-if (requireNamespace("reporttools")) {
-    reporttools::formatPval(x) # "< 0.0001" "0.0057" "0.03" "0.88"
-}
-if (requireNamespace("Hmisc")) {
-    Hmisc::format.pval(x)  # "0" "0.00568" "0.03450" "0.88500"
-}
-if (requireNamespace("surveillance")) {
-    surveillance::formatPval(x)  # "<0.0001" "0.0057" "0.035" "0.89"
-}
-
-## adapt break.middle
-biostatUZH::formatPval(x, break.middle = 0.001)
-
-}
 \seealso{
 the \pkg{base} function \code{\link{format.pval}},
 \code{\link[Hmisc]{format.pval}} in package \pkg{Hmisc},

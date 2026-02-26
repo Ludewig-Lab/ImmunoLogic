@@ -238,7 +238,11 @@ avgHeatmap <- function(seurat,
   }
 
   # Get assay data
-  seuratDat <- GetAssayData(seurat, assay = "RNA", slot = "data")
+  # This tries the new layer argument first (SeuratObject ≥ 5.0.0), and falls back to slot for older versions.
+  seuratDat <- tryCatch(
+    GetAssayData(seurat, assay = "RNA", layer = "data"),
+    error = function(e) GetAssayData(seurat, assay = "RNA", slot = "data")
+  )
 
   # Find genes in the Seurat object
   genes <- data.frame(gene = rownames(seurat)) %>%

@@ -111,7 +111,6 @@ avgHeatmap <- function(seurat,
                        pval_cutoffs = c("***" = 0.001, "**" = 0.01, "*" = 0.05),
                        star_size = 8,
                        p_adjust_method = "BH",
-                       # Old argument names for backward compatibility
                        colVecIdent = NULL,
                        colVecCond = NULL,
                        ordVec = NULL,
@@ -124,30 +123,20 @@ avgHeatmap <- function(seurat,
                        ...) {
 
   # ===========================================================================
-  # BACKWARD COMPATIBILITY: Map old arguments to new ones
+  # BACKWARD COMPATIBILITY
   # ===========================================================================
-
   if (!is.null(colVecIdent)) {
     message("Note: 'colVecIdent' is deprecated. Please use 'annotation_colors' instead.")
-    if (is.null(annotation_colors)) {
-      annotation_colors <- colVecIdent
-    }
+    if (is.null(annotation_colors)) annotation_colors <- colVecIdent
   }
-
   if (!is.null(colVecCond)) {
     message("Note: 'colVecCond' is deprecated. Please use 'condition_colors' instead.")
-    if (is.null(condition_colors)) {
-      condition_colors <- colVecCond
-    }
+    if (is.null(condition_colors)) condition_colors <- colVecCond
   }
-
   if (!is.null(ordVec)) {
     message("Note: 'ordVec' is deprecated. Please use 'cluster_order' instead.")
-    if (is.null(cluster_order)) {
-      cluster_order <- ordVec
-    }
+    if (is.null(cluster_order)) cluster_order <- ordVec
   }
-
   if (!is.null(condCol) && condCol == TRUE && is.null(condition_by)) {
     if ("cond" %in% colnames(seurat@meta.data)) {
       condition_by <- "cond"
@@ -157,292 +146,152 @@ avgHeatmap <- function(seurat,
       message("Note: 'condCol=TRUE' detected. Using 'condition' column for condition annotation.")
     }
   }
-
   if (!is.null(gapVecR)) {
     message("Note: 'gapVecR' is deprecated. Please use 'gaps_row' instead.")
-    if (is.null(gaps_row)) {
-      gaps_row <- gapVecR
-    }
+    if (is.null(gaps_row)) gaps_row <- gapVecR
   }
-
   if (!is.null(gapVecC)) {
     message("Note: 'gapVecC' is deprecated. Please use 'gaps_col' instead.")
-    if (is.null(gaps_col)) {
-      gaps_col <- gapVecC
-    }
+    if (is.null(gaps_col)) gaps_col <- gapVecC
   }
-
   if (!is.null(cc)) {
     message("Note: 'cc' is deprecated. Please use 'cluster_cols' instead.")
     cluster_cols <- cc
   }
-
   if (!is.null(cr)) {
     message("Note: 'cr' is deprecated. Please use 'cluster_rows' instead.")
     cluster_rows <- cr
   }
 
   # ===========================================================================
-  # MAIN FUNCTION LOGIC
+  # MAIN FUNCTION LOGIC & DATA PREP
   # ===========================================================================
-
-  # Handle gene input
   if (is.null(selGenes)) {
-    if ("SCT" %in% names(seurat@assays)) {
-      variable_features <- VariableFeatures(seurat, assay = "SCT")
-    } else {
-      variable_features <- VariableFeatures(seurat, assay = "RNA")
-    }
-
-    if (length(variable_features) == 0) {
-      stop("No variable features found. Please run FindVariableFeatures() first or provide selGenes manually.")
-    }
-
+    variable_features <- VariableFeatures(seurat, assay = ifelse("SCT" %in% names(seurat@assays), "SCT", "RNA"))
+    if (length(variable_features) == 0) stop("No variable features found. Please run FindVariableFeatures() first.")
     gene_list <- head(variable_features, n_variable_genes)
-    message("No genes provided. Using top ", n_variable_genes, " variable features: ",
-            paste(head(gene_list, 5), collapse = ", "), "...")
-
+    message("No genes provided. Using top ", n_variable_genes, " variable features...")
   } else if (is.data.frame(selGenes)) {
-    if ("gene" %in% colnames(selGenes)) {
-      gene_list <- selGenes$gene
-    } else if ("geneID" %in% colnames(selGenes)) {
-      gene_list <- selGenes$geneID
-    } else {
-      gene_list <- selGenes[, 1]
-    }
+    gene_list <- if("gene" %in% colnames(selGenes)) selGenes$gene else if("geneID" %in% colnames(selGenes)) selGenes$geneID else selGenes[, 1]
   } else {
     gene_list <- selGenes
   }
 
-  # Set grouping variable
   if (is.null(group_by)) {
     group_by <- "ident"
-    clusterAssigned <- data.frame(
-      ident = Idents(seurat),
-      cell = names(Idents(seurat))
-    )
+    clusterAssigned <- data.frame(ident = Idents(seurat), cell = names(Idents(seurat)))
   } else {
-    clusterAssigned <- data.frame(
-      ident = seurat@meta.data[[group_by]],
-      cell = rownames(seurat@meta.data)
-    )
+    clusterAssigned <- data.frame(ident = seurat@meta.data[[group_by]], cell = rownames(seurat@meta.data))
   }
 
-  # Add condition if specified
   if (!is.null(condition_by)) {
-    if (!condition_by %in% colnames(seurat@meta.data)) {
-      stop("condition_by '", condition_by, "' not found in seurat metadata")
-    }
+    if (!condition_by %in% colnames(seurat@meta.data)) stop("condition_by '", condition_by, "' not found in metadata")
     clusterAssigned$condition <- seurat@meta.data[[condition_by]]
     clusterAssigned$combined_ident <- paste0(clusterAssigned$ident, "_", clusterAssigned$condition)
   }
 
-  # Get assay data
-  # This tries the new layer argument first (SeuratObject ≥ 5.0.0), and falls back to slot for older versions.
   seuratDat <- tryCatch(
     GetAssayData(seurat, assay = "RNA", layer = "data"),
     error = function(e) GetAssayData(seurat, assay = "RNA", slot = "data")
   )
 
-  # Find genes in the Seurat object
-  genes <- data.frame(gene = rownames(seurat)) %>%
-    mutate(geneID = gsub("^.*\\.", "", gene))
+  genes <- data.frame(gene = rownames(seurat)) %>% mutate(geneID = gsub("^.*\\.", "", gene))
+  matched_genes <- if(all(grepl("^ENSG", gene_list))) genes[genes$gene %in% gene_list, ] else genes[genes$geneID %in% gene_list | genes$gene %in% gene_list, ]
+  if (nrow(matched_genes) == 0) stop("No matching genes found in the Seurat object.")
 
-  # Match genes
-  if (all(grepl("^ENSG", gene_list))) {
-    matched_genes <- genes[genes$gene %in% gene_list, ]
-  } else {
-    matched_genes <- genes[genes$geneID %in% gene_list | genes$gene %in% gene_list, ]
-  }
-
-  if (nrow(matched_genes) == 0) {
-    stop("No matching genes found in the Seurat object. Check gene names.")
-  }
-
-  # Create expression matrix averaged by identity
-  logNormExpres <- as.data.frame(t(as.matrix(
-    seuratDat[matched_genes$gene, ]
-  )))
-
-  logNormExpres <- logNormExpres %>%
+  logNormExpres <- as.data.frame(t(as.matrix(seuratDat[matched_genes$gene, ]))) %>%
     mutate(cell = rownames(.)) %>%
     left_join(clusterAssigned, by = "cell") %>%
     dplyr::select(-cell)
 
-  # Group by combined identity if condition is specified
   if (!is.null(condition_by)) {
-    logNormExpres <- logNormExpres %>%
-      group_by(combined_ident) %>%
-      summarise_at(vars(-ident, -condition), mean, .groups = 'drop')
-  } else {
-    logNormExpres <- logNormExpres %>%
-      group_by(ident) %>%
-      summarise_all(mean, .groups = 'drop')
-  }
-
-  # Convert to matrix format for heatmap
-  if (!is.null(condition_by)) {
-    logNormExpresMa <- logNormExpres %>%
-      dplyr::select(-combined_ident) %>%
-      as.matrix()
+    logNormExpres <- logNormExpres %>% group_by(combined_ident) %>% summarise_at(vars(-ident, -condition), mean, .groups = 'drop')
+    logNormExpresMa <- logNormExpres %>% dplyr::select(-combined_ident) %>% as.matrix()
     rownames(logNormExpresMa) <- logNormExpres$combined_ident
   } else {
-    logNormExpresMa <- logNormExpres %>%
-      dplyr::select(-ident) %>%
-      as.matrix()
+    logNormExpres <- logNormExpres %>% group_by(ident) %>% summarise_all(mean, .groups = 'drop')
+    logNormExpresMa <- logNormExpres %>% dplyr::select(-ident) %>% as.matrix()
     rownames(logNormExpresMa) <- logNormExpres$ident
   }
 
   logNormExpresMa <- t(logNormExpresMa)
-
-  # Clean up gene names
   rownames(logNormExpresMa) <- gsub("^.*?\\.", "", rownames(logNormExpresMa))
 
-  # Remove genes with zero variance
   zero_var_genes <- apply(logNormExpresMa, 1, sd) == 0
   if (any(zero_var_genes)) {
     logNormExpresMa <- logNormExpresMa[!zero_var_genes, , drop = FALSE]
-    warning(paste("Removed", sum(zero_var_genes), "genes with zero variance across groups"))
+    warning(paste("Removed", sum(zero_var_genes), "genes with zero variance"))
   }
 
   # ===========================================================================
-  # SIGNIFICANCE TESTING (MODIFIED)
+  # SIGNIFICANCE TESTING
   # ===========================================================================
-
   significance_matrix <- NULL
-
   if (show_significance) {
     message("Performing significance testing...")
-
-    # Create a matrix to store significance symbols
     significance_matrix <- matrix("", nrow = nrow(logNormExpresMa), ncol = ncol(logNormExpresMa))
     rownames(significance_matrix) <- rownames(logNormExpresMa)
     colnames(significance_matrix) <- colnames(logNormExpresMa)
 
-    # Get the raw expression data for statistical testing
-    raw_expression <- as.data.frame(t(as.matrix(seuratDat[matched_genes$gene, ])))
-    raw_expression <- raw_expression %>%
-      mutate(cell = rownames(.)) %>%
-      left_join(clusterAssigned, by = "cell")
+    raw_expression <- as.data.frame(t(as.matrix(seuratDat[matched_genes$gene, ]))) %>%
+      mutate(cell = rownames(.)) %>% left_join(clusterAssigned, by = "cell")
 
-    # Clean column names to match
     gene_cols <- setdiff(colnames(raw_expression), c("cell", "ident", "condition", "combined_ident"))
     clean_gene_names <- gsub("^.*?\\.", "", gene_cols)
-
-    # Determine which grouping variable to use
     group_var <- if (!is.null(condition_by)) "combined_ident" else "ident"
 
-    # Store p-values for adjustment
-    pval_list <- list()
-    test_info <- list()
+    pval_list <- list(); test_info <- list(); test_counter <- 0
 
-    # For each cluster and each gene, perform test
-    test_counter <- 0
     for (cluster in colnames(logNormExpresMa)) {
       for (i in seq_along(gene_cols)) {
-        gene_col <- gene_cols[i]
-        gene_name <- clean_gene_names[i]
-
-        # Skip if gene was filtered out
+        gene_col <- gene_cols[i]; gene_name <- clean_gene_names[i]
         if (!gene_name %in% rownames(logNormExpresMa)) next
 
-        # Get expression values
         cluster_cells <- raw_expression[[group_var]] == cluster
         in_cluster <- raw_expression[cluster_cells, gene_col]
 
-        # --- MODIFICATION START ---
-        # Check if we are in the 'condition_by' mode
         if (!is.null(condition_by)) {
-          # New logic: Compare only within the same base cluster (e.g., "Fb1")
-
-          # 1. Get base cluster (e.g., "Fb1" from "Fb1_donorheart")
           base_cluster <- gsub("_[^_]*$", "", cluster)
-
-          # 2. Find all cluster names from the heatmap
           all_heatmap_clusters <- colnames(logNormExpresMa)
-
-          # 3. Find all "siblings" (e.g., "Fb1_donorheart", "Fb1_explant", "Fb1_control")
           sibling_clusters <- grep(paste0("^", base_cluster, "_"), all_heatmap_clusters, value = TRUE)
-
-          # 4. Find the *other* siblings to compare against
           other_sibling_clusters <- setdiff(sibling_clusters, cluster)
-
-          # 5. Get the cells belonging to these other siblings
           out_cells <- raw_expression[[group_var]] %in% other_sibling_clusters
           out_cluster <- raw_expression[out_cells, gene_col]
-
         } else {
-          # Original logic: compare cluster vs. all other clusters
           out_cluster <- raw_expression[!cluster_cells, gene_col]
         }
-        # --- MODIFICATION END ---
 
-
-        # Skip if not enough data
         if (length(in_cluster) < 3 || length(out_cluster) < 3) next
 
-        # Perform statistical test
         tryCatch({
           if (significance_test == "wilcox") {
             test_result <- wilcox.test(in_cluster, out_cluster, alternative = "two.sided")
-          } else if (significance_test == "t.test") {
-            test_result <- t.test(in_cluster, out_cluster, alternative = "two.sided")
           } else {
-            stop("significance_test must be 'wilcox' or 't.test'")
+            test_result <- t.test(in_cluster, out_cluster, alternative = "two.sided")
           }
 
           test_counter <- test_counter + 1
-          pval <- test_result$p.value
-
-          # Use median for comparison, as requested for wilcox
-          # (mean is also fine for direction, but median is more robust)
-          median_in <- median(in_cluster)
-          median_out <- median(out_cluster)
-          is_higher <- median_in > median_out
-
-          # Store for adjustment
-          pval_list[[test_counter]] <- pval
-          test_info[[test_counter]] <- list(
-            gene = gene_name,
-            cluster = cluster,
-            is_higher = is_higher
-          )
-
-        }, error = function(e) {
-          # Skip genes that cause errors
-        })
+          pval_list[[test_counter]] <- test_result$p.value
+          test_info[[test_counter]] <- list(gene = gene_name, cluster = cluster, is_higher = median(in_cluster) > median(out_cluster))
+        }, error = function(e) {})
       }
     }
 
-    # Adjust p-values for multiple testing
     if (length(pval_list) > 0) {
       if (p_adjust_method == "none") {
         adjusted_pvals <- unlist(pval_list)
-        message("Using unadjusted p-values (no multiple testing correction)")
       } else {
         adjusted_pvals <- p.adjust(unlist(pval_list), method = p_adjust_method)
-        message(sprintf("Adjusted %d p-values using %s method", length(pval_list), p_adjust_method))
       }
 
-      # Assign significance stars based on adjusted p-values
       for (j in seq_along(adjusted_pvals)) {
-        info <- test_info[[j]]
-        pval <- adjusted_pvals[j]
-
-        # Determine if we should show based on direction preference
-        should_show <- FALSE
-        if (significance_direction == "higher" && info$is_higher) {
-          should_show <- TRUE
-        } else if (significance_direction == "lower" && !info$is_higher) {
-          should_show <- TRUE
-        } else if (significance_direction == "both") {
-          should_show <- TRUE
-        }
+        info <- test_info[[j]]; pval <- adjusted_pvals[j]
+        should_show <- (significance_direction == "both") ||
+          (significance_direction == "higher" && info$is_higher) ||
+          (significance_direction == "lower" && !info$is_higher)
 
         if (should_show) {
-          # Sort cutoffs by p-value (most stringent first)
           sorted_cutoffs <- sort(pval_cutoffs)
-
           for (k in seq_along(sorted_cutoffs)) {
             if (pval < sorted_cutoffs[k]) {
               significance_matrix[info$gene, info$cluster] <- names(sorted_cutoffs)[k]
@@ -457,14 +306,9 @@ avgHeatmap <- function(seurat,
   # ===========================================================================
   # Column and Row Ordering
   # ===========================================================================
-
-  # Apply cluster_order if provided
   if (!is.null(cluster_order)) {
     if (!is.null(condition_by)) {
-      message("Applying manual column order (cluster_order) with condition_by grouping.")
-      final_order <- c()
-      current_cols <- colnames(logNormExpresMa)
-
+      final_order <- c(); current_cols <- colnames(logNormExpresMa)
       for (base_cluster in cluster_order) {
         cols_to_add <- sort(grep(paste0("^", base_cluster, "_"), current_cols, value = TRUE))
         if (length(cols_to_add) > 0) {
@@ -473,313 +317,131 @@ avgHeatmap <- function(seurat,
         }
       }
       final_order <- c(final_order, current_cols)
-
       if (length(final_order) == length(colnames(logNormExpresMa))) {
         logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
-        if (!is.null(significance_matrix)) {
-          significance_matrix <- significance_matrix[, final_order, drop = FALSE]
-        }
+        if (!is.null(significance_matrix)) significance_matrix <- significance_matrix[, final_order, drop = FALSE]
       }
     } else {
-      message("Applying manual column order (cluster_order).")
       order_valid <- cluster_order[cluster_order %in% colnames(logNormExpresMa)]
       if (length(order_valid) > 0) {
-        remaining_cols <- setdiff(colnames(logNormExpresMa), order_valid)
-        final_order <- c(order_valid, remaining_cols)
+        final_order <- c(order_valid, setdiff(colnames(logNormExpresMa), order_valid))
         logNormExpresMa <- logNormExpresMa[, final_order, drop = FALSE]
-        if (!is.null(significance_matrix)) {
-          significance_matrix <- significance_matrix[, final_order, drop = FALSE]
-        }
+        if (!is.null(significance_matrix)) significance_matrix <- significance_matrix[, final_order, drop = FALSE]
       }
     }
   }
 
-  # Order genes
   if (!cluster_rows) {
     if (!is.null(gene_order)) {
-      message("Applying manual gene order (gene_order).")
       cleaned_gene_list <- gsub("^.*?\\.", "", gene_order)
       ordered_genes_from_list <- cleaned_gene_list[cleaned_gene_list %in% rownames(logNormExpresMa)]
-      remaining_genes <- setdiff(rownames(logNormExpresMa), ordered_genes_from_list)
-      final_gene_order <- c(ordered_genes_from_list, remaining_genes)
-
+      final_gene_order <- c(ordered_genes_from_list, setdiff(rownames(logNormExpresMa), ordered_genes_from_list))
       if (length(final_gene_order) > 0) {
         logNormExpresMa <- logNormExpresMa[final_gene_order, , drop = FALSE]
-        if (!is.null(significance_matrix)) {
-          significance_matrix <- significance_matrix[final_gene_order, , drop = FALSE]
-        }
+        if (!is.null(significance_matrix)) significance_matrix <- significance_matrix[final_gene_order, , drop = FALSE]
       }
     } else {
-      message("Ordering genes by cluster of max expression (default).")
       max_clusters <- apply(logNormExpresMa, 1, function(x) colnames(logNormExpresMa)[which.max(x)])
-      current_col_order <- colnames(logNormExpresMa)
       ordered_genes <- c()
-
-      for (cluster in current_col_order) {
+      for (cluster in colnames(logNormExpresMa)) {
         cluster_genes <- names(max_clusters[max_clusters == cluster])
         if (length(cluster_genes) > 0) {
-          cluster_gene_order <- cluster_genes[order(logNormExpresMa[cluster_genes, cluster], decreasing = TRUE)]
-          ordered_genes <- c(ordered_genes, cluster_gene_order)
+          ordered_genes <- c(ordered_genes, cluster_genes[order(logNormExpresMa[cluster_genes, cluster], decreasing = TRUE)])
         }
       }
-
       if (length(ordered_genes) > 0) {
         logNormExpresMa <- logNormExpresMa[ordered_genes, , drop = FALSE]
-        if (!is.null(significance_matrix)) {
-          significance_matrix <- significance_matrix[ordered_genes, , drop = FALSE]
-        }
+        if (!is.null(significance_matrix)) significance_matrix <- significance_matrix[ordered_genes, , drop = FALSE]
       }
     }
   }
 
   # ===========================================================================
-  # Color Setup
+  # Color Setup (Refactored to use generate_colors)
   # ===========================================================================
-
   if (is.null(color_palette)) {
-    color_palette <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(50)
+    color_palette <- grDevices::colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(50)
   }
 
-  # Create annotation
   if (!is.null(condition_by)) {
     col_names <- colnames(logNormExpresMa)
     celltype_vec <- gsub("_[^_]*$", "", col_names)
     condition_vec <- gsub("^.*_", "", col_names)
 
-    ## --- MODIFIED BLOCK START --- ##
-    # Determine legend titles
     final_group_name <- if (!is.null(group_legend_title)) group_legend_title else "Celltype"
     final_cond_name <- if (!is.null(condition_legend_title)) condition_legend_title else "Condition"
 
-    annotation_col <- data.frame(
-      GroupColumn = celltype_vec,     # Placeholder name
-      ConditionColumn = condition_vec, # Placeholder name
-      row.names = col_names
-    )
-    # Set final names
+    annotation_col <- data.frame(GroupColumn = celltype_vec, ConditionColumn = condition_vec, row.names = col_names)
     colnames(annotation_col) <- c(final_group_name, final_cond_name)
-    ## --- MODIFIED BLOCK END --- ##
 
     celltypes_present <- unique(celltype_vec)
     conditions_present <- unique(condition_vec)
-    n_celltypes <- length(celltypes_present)
-    n_conditions <- length(conditions_present)
-  } else {
-    ## --- MODIFIED BLOCK START --- ##
-    # Determine legend title
-    final_group_name <- if (!is.null(group_legend_title)) group_legend_title else "Group"
 
-    annotation_col <- data.frame(
-      Group = colnames(logNormExpresMa),
-      row.names = colnames(logNormExpresMa)
-    )
-    # Set final name
-    colnames(annotation_col) <- final_group_name
-    ## --- MODIFIED BLOCK END --- ##
-
-    groups_present <- unique(annotation_col[[final_group_name]])
-    n_groups <- length(groups_present)
-  }
-
-  # Color palettes
-  disease_colors <- c("#dfc27d", "#BE3144", "#202547", "#355C7D", "#779d8d")
-  fibroblast_colors <- c("#D53E4F", "#f4a582", "#ff7b7b", "#8e0b00", "#FEE08B",
-                         "#42090D", "#FF7B00", "#FFF4DF")
-  nice_colors <- c("#67001f", "#D53E4F", "#f4a582", "#FEE08B", "#003c30", "#01665e",
-                   "#66C2A5", "#3288BD", "#BEAED4", "#c7eae5", "#355C7D", "#202547",
-                   "#B45B5C", "#8c510a")
-  extended_colors <- c("#fde0dd", "#fa9fb5", "#d95f0e", "#dd1c77", "#D53E4F",
-                       "#f4a582", "#FEE08B", "#f03b20", "#ffffcc", "#43a2ca",
-                       "#1c9099", "#355C7D", "#3288BD", "#BEAED4", "#756bb1",
-                       "#c7eae5")
-  large_palette <- c(
-    "#fde0dd", "#fa9fb5", "#f768a1", "#dd1c77", "#980043",
-    "#f4a582", "#fdae61", "#f46d43", "#d73027", "#a50026",
-    "#fee08b", "#ffffbf", "#e6f598", "#99d594", "#66c2a5",
-    "#43a2ca", "#1c9099", "#016c59", "#3288bd", "#5e4fa2",
-    "#beaed4", "#9e9ac8", "#756bb1", "#542788", "#3f007d",
-    "#c7eae5", "#a6bddb", "#74a9cf", "#3690c0", "#045a8d"
-  )
-
-  if (!is.null(condition_by)) {
-    # Handle dual annotation colors
+    # 1. Resolve Celltype Colors
     if (!is.null(annotation_colors)) {
-      if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
-        if (!is.null(names(annotation_colors))) {
-          celltype_colors <- annotation_colors[names(annotation_colors) %in% celltypes_present]
-          if (length(celltype_colors) < n_celltypes) {
-            missing <- setdiff(celltypes_present, names(celltype_colors))
-            default_cols <- rainbow(length(missing))
-            names(default_cols) <- missing
-            celltype_colors <- c(celltype_colors, default_cols)
-          }
-        } else {
-          if (length(annotation_colors) < n_celltypes) {
-            annotation_colors <- c(annotation_colors, rainbow(n_celltypes - length(annotation_colors)))
-          }
-          celltype_colors <- annotation_colors[1:n_celltypes]
-          names(celltype_colors) <- celltypes_present
-        }
-      } else if (is.list(annotation_colors)) {
-        if ("Celltype" %in% names(annotation_colors)) {
-          celltype_colors <- annotation_colors$Celltype
-        } else if ("Group" %in% names(annotation_colors)) {
-          celltype_colors <- annotation_colors$Group
-        } else {
-          celltype_colors <- annotation_colors[[1]]
-        }
-        if (!is.null(names(celltype_colors))) {
-          celltype_colors <- celltype_colors[names(celltype_colors) %in% celltypes_present]
-        }
+      celltype_colors <- if (is.list(annotation_colors)) annotation_colors[[1]] else annotation_colors
+      celltype_colors <- celltype_colors[names(celltype_colors) %in% celltypes_present]
+      if (length(celltype_colors) < length(celltypes_present)) {
+        missing <- setdiff(celltypes_present, names(celltype_colors))
+        celltype_colors <- c(celltype_colors, generate_colors(missing, "default"))
       }
     } else {
-      if (n_celltypes <= 5 && any(grepl("healthy|explant|visit", celltypes_present, ignore.case = TRUE))) {
-        celltype_colors <- disease_colors[1:n_celltypes]
-      } else if (n_celltypes <= 8 && any(grepl("Fb|Periv|VSMC", celltypes_present, ignore.case = TRUE))) {
-        celltype_colors <- fibroblast_colors[1:n_celltypes]
-      } else if (n_celltypes <= 14) {
-        celltype_colors <- nice_colors[1:n_celltypes]
-      } else if (n_celltypes <= 16) {
-        celltype_colors <- extended_colors[1:n_celltypes]
-      } else if (n_celltypes <= 30) {
-        celltype_colors <- large_palette[1:n_celltypes]
-      } else {
-        celltype_colors <- c(large_palette, rainbow(n_celltypes - length(large_palette)))
-      }
-      names(celltype_colors) <- celltypes_present
+      celltype_colors <- generate_colors(celltypes_present, "default")
     }
 
+    # 2. Resolve Condition Colors
     if (!is.null(condition_colors)) {
-      if (!is.null(names(condition_colors))) {
-        cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
-        if (length(cond_colors) < n_conditions) {
-          missing <- setdiff(conditions_present, names(cond_colors))
-          default_cols <- c(
-            "steelblue", "orange", "purple", "forestgreen", "firebrick",
-            "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
-            "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
-            "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
-            "rosybrown", "lightblue", "limegreen", "maroon", "peru"
-          )[1:length(missing)]
-          names(default_cols) <- missing
-          cond_colors <- c(cond_colors, default_cols)
-        }
-      } else {
-        cond_colors <- condition_colors[1:n_conditions]
-        names(cond_colors) <- conditions_present
+      cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
+      if (length(cond_colors) < length(conditions_present)) {
+        missing <- setdiff(conditions_present, names(cond_colors))
+        cond_colors <- c(cond_colors, generate_colors(missing, "condition"))
       }
     } else {
-      default_cond_colors <- c(
-        "steelblue", "orange", "purple", "forestgreen", "firebrick",
-        "goldenrod", "turquoise", "violet", "darkolivegreen", "coral",
-        "slateblue", "tomato", "mediumorchid", "darkgoldenrod", "cadetblue",
-        "deeppink", "darkseagreen", "dodgerblue", "sienna", "darkcyan",
-        "rosybrown", "lightblue", "limegreen", "maroon", "peru"
-      )
-      cond_colors <- default_cond_colors[1:n_conditions]
-      names(cond_colors) <- conditions_present
+      cond_colors <- generate_colors(conditions_present, "condition")
     }
 
-    ## --- MODIFIED BLOCK START --- ##
-    ann_colors_final <- list(
-      celltype_colors,
-      cond_colors
-    )
-    # Set names dynamically based on user input or defaults
+    ann_colors_final <- list(celltype_colors, cond_colors)
     names(ann_colors_final) <- c(final_group_name, final_cond_name)
-    ## --- MODIFIED BLOCK END --- ##
 
   } else {
-    # Single annotation colors
-    if (is.null(annotation_colors)) {
-      if (n_groups <= 5 && any(grepl("healthy|explant|visit", groups_present, ignore.case = TRUE))) {
-        group_colors <- disease_colors[1:n_groups]
-      } else if (n_groups <= 8 && any(grepl("Fb|Periv|VSMC", groups_present, ignore.case = TRUE))) {
-        group_colors <- fibroblast_colors[1:n_groups]
-      } else if (n_groups <= 14) {
-        group_colors <- nice_colors[1:n_groups]
-      } else if (n_groups <= 16) {
-        group_colors <- extended_colors[1:n_groups]
-      } else if (n_groups <= 30) {
-        group_colors <- large_palette[1:n_groups]
-      } else {
-        group_colors <- c(large_palette, rainbow(n_groups - length(large_palette)))
-      }
-      names(group_colors) <- groups_present
-      ann_colors_final <- list(group_colors)
-      names(ann_colors_final) <- final_group_name
-    } else {
-      if (is.vector(annotation_colors) && !is.list(annotation_colors)) {
-        if (!is.null(names(annotation_colors))) {
-          group_colors <- annotation_colors[names(annotation_colors) %in% groups_present]
-          if (length(group_colors) < n_groups) {
-            missing <- setdiff(groups_present, names(group_colors))
-            default_cols <- rainbow(length(missing))
-            names(default_cols) <- missing
-            group_colors <- c(group_colors, default_cols)
-          }
-        } else {
-          if (length(annotation_colors) < n_groups) {
-            annotation_colors <- c(annotation_colors, rainbow(n_groups - length(annotation_colors)))
-          }
-          group_colors <- annotation_colors[1:n_groups]
-          names(group_colors) <- groups_present
-        }
-        ann_colors_final <- list(group_colors)
-        names(ann_colors_final) <- final_group_name
+    final_group_name <- if (!is.null(group_legend_title)) group_legend_title else "Group"
+    annotation_col <- data.frame(Group = colnames(logNormExpresMa), row.names = colnames(logNormExpresMa))
+    colnames(annotation_col) <- final_group_name
+    groups_present <- unique(annotation_col[[final_group_name]])
 
-      } else if (is.list(annotation_colors)) {
-        if ("Group" %in% names(annotation_colors)) {
-          group_colors <- annotation_colors$Group
-        } else {
-          group_colors <- annotation_colors[[1]]
-        }
-        if (!is.null(names(group_colors))) {
-          group_colors <- group_colors[names(group_colors) %in% groups_present]
-        }
-        ann_colors_final <- list(group_colors)
-        names(ann_colors_final) <- final_group_name
+    # 3. Resolve Group Colors (Single Annotation)
+    if (is.null(annotation_colors)) {
+      group_colors <- generate_colors(groups_present, "default")
+    } else {
+      group_colors <- if (is.list(annotation_colors)) annotation_colors[[1]] else annotation_colors
+      group_colors <- group_colors[names(group_colors) %in% groups_present]
+      if (length(group_colors) < length(groups_present)) {
+        missing <- setdiff(groups_present, names(group_colors))
+        group_colors <- c(group_colors, generate_colors(missing, "default"))
       }
     }
+    ann_colors_final <- list(group_colors)
+    names(ann_colors_final) <- final_group_name
   }
 
   # ===========================================================================
   # Generate Heatmap
   # ===========================================================================
-
-  # Prepare parameters for pheatmap
   pheatmap_params <- list(
-    mat = logNormExpresMa,
-    scale = scale_method,
-    cluster_rows = cluster_rows,
-    cluster_cols = cluster_cols,
-    color = color_palette,
-    annotation_col = annotation_col,
-    annotation_colors = ann_colors_final,
-    cellwidth = cellwidth,
-    cellheight = cellheight,
-    show_rownames = show_rownames,
-    show_colnames = show_colnames,
-    gaps_row = gaps_row,
-    gaps_col = gaps_col
+    mat = logNormExpresMa, scale = scale_method, cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols, color = color_palette, annotation_col = annotation_col,
+    annotation_colors = ann_colors_final, cellwidth = cellwidth, cellheight = cellheight,
+    show_rownames = show_rownames, show_colnames = show_colnames, gaps_row = gaps_row, gaps_col = gaps_col
   )
 
-  # Add significance stars if requested
   if (show_significance && !is.null(significance_matrix)) {
     pheatmap_params$display_numbers <- significance_matrix
     pheatmap_params$number_color <- "black"
     pheatmap_params$fontsize_number <- star_size
   }
 
-  # Add any additional arguments
   pheatmap_params <- c(pheatmap_params, list(...))
-
-  # Generate heatmap
   p <- do.call(pheatmap::pheatmap, pheatmap_params)
 
-  if (return_ggplot) {
-    return(ggplotify::as.ggplot(p$gtable))
-  } else {
-    return(p)
-  }
+  if (return_ggplot) return(ggplotify::as.ggplot(p$gtable)) else return(p)
 }

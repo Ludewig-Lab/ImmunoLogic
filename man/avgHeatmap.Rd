@@ -40,7 +40,7 @@ avgHeatmap(
   cc = NULL,
   cr = NULL,
   condCol = NULL,
-  return_ggplot = TRUE,
+  return_ggplot = FALSE,
   ...
 )
 }

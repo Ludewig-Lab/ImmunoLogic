@@ -119,7 +119,7 @@ avgHeatmap <- function(seurat,
                        cc = NULL,
                        cr = NULL,
                        condCol = NULL,
-                       return_ggplot = TRUE,
+                       return_ggplot = FALSE,
                        ...) {
 
   # ===========================================================================
@@ -303,6 +303,34 @@ avgHeatmap <- function(seurat,
     }
   }
 
+  # Respect factor level ordering when no explicit cluster_order is given
+  if (is.null(cluster_order)) {
+    if (is.factor(clusterAssigned$ident)) {
+      base_levels <- levels(clusterAssigned$ident)
+    } else {
+      base_levels <- unique(clusterAssigned$ident)
+    }
+
+    if (!is.null(condition_by)) {
+      if (is.factor(clusterAssigned$condition)) {
+        cond_levels <- levels(clusterAssigned$condition)
+      } else {
+        cond_levels <- unique(clusterAssigned$condition)
+      }
+      desired_order <- as.vector(t(outer(base_levels, cond_levels, paste, sep = "_")))
+      desired_order <- desired_order[desired_order %in% colnames(logNormExpresMa)]
+    } else {
+      desired_order <- base_levels[base_levels %in% colnames(logNormExpresMa)]
+    }
+
+    if (length(desired_order) == ncol(logNormExpresMa)) {
+      logNormExpresMa <- logNormExpresMa[, desired_order, drop = FALSE]
+      if (!is.null(significance_matrix)) {
+        significance_matrix <- significance_matrix[, desired_order, drop = FALSE]
+      }
+    }
+  }
+
   # ===========================================================================
   # Column and Row Ordering
   # ===========================================================================
@@ -391,12 +419,18 @@ avgHeatmap <- function(seurat,
 
     # 2. Resolve Condition Colors
     if (!is.null(condition_colors)) {
+      # Handle unnamed vectors: assign names from conditions_present
+      if (is.null(names(condition_colors))) {
+        if (length(condition_colors) >= length(conditions_present)) {
+          names(condition_colors) <- conditions_present[seq_along(conditions_present)]
+        }
+      }
       cond_colors <- condition_colors[names(condition_colors) %in% conditions_present]
       if (length(cond_colors) < length(conditions_present)) {
         missing <- setdiff(conditions_present, names(cond_colors))
         cond_colors <- c(cond_colors, generate_colors(missing, "condition"))
       }
-    } else {
+    }else {
       cond_colors <- generate_colors(conditions_present, "condition")
     }
 

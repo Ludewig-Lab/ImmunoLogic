@@ -1,6 +1,6 @@
 Package: ImmunoLogic
 Title: Misc Tools of the Institute of Immunobiology, H-OCH KSSG St. Gallen
-Version: 0.0.1.7
+Version: 0.1.0.0
 Authors@R: 
     person("Roman", "Stadler", , "roman.stadler@uzh.com", role = c("aut", "cre"))
 Description: Provides a suite of tools focused on the analysis and

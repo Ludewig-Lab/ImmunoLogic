@@ -9,6 +9,9 @@
 #' @param group_by Metadata column in the Seurat object to group cells by. Defaults to `NULL` (uses active identity).
 #' @param condition_by Optional metadata column for a second grouping variable (e.g., treatment condition). Default is `NULL`.
 #' @param scale_method Scaling method for the heatmap: `"row"`, `"column"`, or `"none"`. Default is `"row"`.
+#' @param transpose Logical, whether to transpose the heatmap so that groups are on rows and genes are on columns. Default is `FALSE`.
+#' @param angle_col Angle of column labels at the bottom of the heatmap ("0", "45", "90", "270", "315").
+#'   Default is `NULL`, which automatically sets it to `"45"` when `transpose = TRUE` and `"270"` otherwise.
 #' @param cluster_rows Logical, whether to cluster rows. Default is `FALSE`.
 #' @param cluster_cols Logical, whether to cluster columns. Default is `FALSE`.
 #' @param cluster_order Optional character vector to manually set the order of columns (clusters). Overrides `cluster_cols = FALSE`.
@@ -73,13 +76,12 @@
 #'            group_by = "celltype",
 #'            show_significance = TRUE)
 #'
-#' # Example with custom legend titles
+#' # Horizontal heatmap with 45 degree gene labels at the bottom
 #' avgHeatmap(seurat,
-#'            selGenes = c("GeneA", "GeneB"),
+#'            selGenes = c("GeneA", "GeneB", "GeneC"),
 #'            group_by = "celltype",
-#'            condition_by = "treatment",
-#'            group_legend_title = "Cell Type",
-#'            condition_legend_title = "Treatment")
+#'            transpose = TRUE,
+#'            angle_col = "45")
 #' }
 #'
 #' @export
@@ -89,6 +91,8 @@ avgHeatmap <- function(seurat,
                        group_by = NULL,
                        condition_by = NULL,
                        scale_method = "row",
+                       transpose = FALSE,
+                       angle_col = NULL,
                        cluster_rows = FALSE,
                        cluster_cols = FALSE,
                        cluster_order = NULL,
@@ -430,7 +434,7 @@ avgHeatmap <- function(seurat,
         missing <- setdiff(conditions_present, names(cond_colors))
         cond_colors <- c(cond_colors, generate_colors(missing, "condition"))
       }
-    }else {
+    } else {
       cond_colors <- generate_colors(conditions_present, "condition")
     }
 
@@ -459,14 +463,68 @@ avgHeatmap <- function(seurat,
   }
 
   # ===========================================================================
-  # Generate Heatmap
+  # Column Angle Validation
   # ===========================================================================
-  pheatmap_params <- list(
-    mat = logNormExpresMa, scale = scale_method, cluster_rows = cluster_rows,
-    cluster_cols = cluster_cols, color = color_palette, annotation_col = annotation_col,
-    annotation_colors = ann_colors_final, cellwidth = cellwidth, cellheight = cellheight,
-    show_rownames = show_rownames, show_colnames = show_colnames, gaps_row = gaps_row, gaps_col = gaps_col
-  )
+  if (is.null(angle_col)) {
+    angle_col <- if (transpose) "45" else "270"
+  }
+  angle_col <- as.character(angle_col)
+  valid_angles <- c("0", "45", "90", "270", "315")
+  if (!angle_col %in% valid_angles) {
+    stop("Invalid 'angle_col': '", angle_col, "'. pheatmap only supports angles: ",
+         paste(valid_angles, collapse = ", "), " degrees.")
+  }
+
+  # ===========================================================================
+  # Generate Heatmap (Handle Transposition)
+  # ===========================================================================
+  if (transpose) {
+    # Transpose data and significance matrices
+    mat_plot <- t(logNormExpresMa)
+    if (!is.null(significance_matrix)) {
+      significance_matrix <- t(significance_matrix)
+    }
+
+    # Adjust scaling method so scaling remains per-gene rather than across genes
+    final_scale <- scale_method
+    if (scale_method == "row") final_scale <- "column"
+    else if (scale_method == "column") final_scale <- "row"
+
+    pheatmap_params <- list(
+      mat = mat_plot,
+      scale = final_scale,
+      cluster_rows = cluster_cols,
+      cluster_cols = cluster_rows,
+      color = color_palette,
+      annotation_row = annotation_col,
+      annotation_col = NA,
+      annotation_colors = ann_colors_final,
+      cellwidth = cellwidth,   # Kept as cellwidth to prevent x-axis squishing
+      cellheight = cellheight, # Kept as cellheight to prevent y-axis squishing
+      show_rownames = show_colnames,
+      show_colnames = show_rownames,
+      gaps_row = gaps_col,
+      gaps_col = gaps_row,
+      angle_col = angle_col
+    )
+  } else {
+    pheatmap_params <- list(
+      mat = logNormExpresMa,
+      scale = scale_method,
+      cluster_rows = cluster_rows,
+      cluster_cols = cluster_cols,
+      color = color_palette,
+      annotation_col = annotation_col,
+      annotation_colors = ann_colors_final,
+      cellwidth = cellwidth,
+      cellheight = cellheight,
+      show_rownames = show_rownames,
+      show_colnames = show_colnames,
+      gaps_row = gaps_row,
+      gaps_col = gaps_col,
+      angle_col = angle_col
+    )
+  }
 
   if (show_significance && !is.null(significance_matrix)) {
     pheatmap_params$display_numbers <- significance_matrix

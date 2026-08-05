@@ -10,6 +10,8 @@ avgHeatmap(
   group_by = NULL,
   condition_by = NULL,
   scale_method = "row",
+  transpose = FALSE,
+  angle_col = NULL,
   cluster_rows = FALSE,
   cluster_cols = FALSE,
   cluster_order = NULL,
@@ -54,6 +56,11 @@ avgHeatmap(
 \item{condition_by}{Optional metadata column for a second grouping variable (e.g., treatment condition). Default is \code{NULL}.}
 
 \item{scale_method}{Scaling method for the heatmap: \code{"row"}, \code{"column"}, or \code{"none"}. Default is \code{"row"}.}
+
+\item{transpose}{Logical, whether to transpose the heatmap so that groups are on rows and genes are on columns. Default is \code{FALSE}.}
+
+\item{angle_col}{Angle of column labels at the bottom of the heatmap ("0", "45", "90", "270", "315").
+Default is \code{NULL}, which automatically sets it to \code{"45"} when \code{transpose = TRUE} and \code{"270"} otherwise.}
 
 \item{cluster_rows}{Logical, whether to cluster rows. Default is \code{FALSE}.}
 
@@ -144,13 +151,12 @@ avgHeatmap(seurat,
            group_by = "celltype",
            show_significance = TRUE)
 
-# Example with custom legend titles
+# Horizontal heatmap with 45 degree gene labels at the bottom
 avgHeatmap(seurat,
-           selGenes = c("GeneA", "GeneB"),
+           selGenes = c("GeneA", "GeneB", "GeneC"),
            group_by = "celltype",
-           condition_by = "treatment",
-           group_legend_title = "Cell Type",
-           condition_legend_title = "Treatment")
+           transpose = TRUE,
+           angle_col = "45")
 }
 
 }

@@ -38,6 +38,9 @@
 #' @param star_size Numeric, font size for significance stars. Default is `8`.
 #' @param p_adjust_method Method for p-value adjustment. Default is `"BH"` (Benjamini-Hochberg/FDR).
 #'    Use `"none"` for unadjusted p-values. See `?p.adjust` for other options.
+#' @param assay Assay to read expression from. Default `NULL` uses `"RNA"` if present
+#'   (previous behaviour), otherwise the default assay. Use e.g. `"SCT"` for SCTransform data.
+#' @importFrom SeuratObject DefaultAssay GetAssayData Layers LayerData
 #' @param ... Additional arguments passed to [pheatmap::pheatmap()].
 #'
 #' @return A `pheatmap` object.
@@ -86,6 +89,41 @@
 #'
 #' @export
 
+#' Fetch the normalised data matrix for selected features (Seurat v3-v5)
+#'
+#' Handles v3/v4 assays (slot or layer argument, depending on SeuratObject
+#' version) and v5 Assay5 objects, including split "data.*" layers.
+#'
+#' @keywords internal
+#' @noRd
+.avg_get_data <- function(seurat, assay, features) {
+  obj <- seurat[[assay]]
+
+  if (inherits(obj, "Assay5")) {
+    lyr <- SeuratObject::Layers(obj, search = "data")
+    if (!length(lyr)) {
+      stop("Assay '", assay, "' has no 'data' layer. Run NormalizeData() or SCTransform() first.")
+    }
+    mats <- lapply(lyr, function(l) {
+      m    <- SeuratObject::LayerData(obj, layer = l)
+      keep <- intersect(features, rownames(m))
+      out  <- Matrix::sparseMatrix(i = integer(0), j = integer(0), x = numeric(0),
+                                   dims = c(length(features), ncol(m)),
+                                   dimnames = list(features, colnames(m)))
+      if (length(keep)) out[keep, ] <- m[keep, , drop = FALSE]
+      out
+    })
+    return(do.call(cbind, mats))
+  }
+
+  m <- if (utils::packageVersion("SeuratObject") >= "5.0.0") {
+    SeuratObject::GetAssayData(seurat, assay = assay, layer = "data")
+  } else {
+    SeuratObject::GetAssayData(seurat, assay = assay, slot = "data")
+  }
+  m[features, , drop = FALSE]
+}
+
 avgHeatmap <- function(seurat,
                        selGenes = NULL,
                        group_by = NULL,
@@ -124,6 +162,7 @@ avgHeatmap <- function(seurat,
                        cr = NULL,
                        condCol = NULL,
                        return_ggplot = FALSE,
+					   assay = NULL,
                        ...) {
 
   # ===========================================================================
@@ -194,14 +233,19 @@ avgHeatmap <- function(seurat,
     clusterAssigned$combined_ident <- paste0(clusterAssigned$ident, "_", clusterAssigned$condition)
   }
 
-  seuratDat <- tryCatch(
-    GetAssayData(seurat, assay = "RNA", layer = "data"),
-    error = function(e) GetAssayData(seurat, assay = "RNA", slot = "data")
-  )
+  s  # Assay: default keeps the old behaviour ("RNA"), otherwise the active assay
+  if (is.null(assay)) {
+    assay <- if ("RNA" %in% names(seurat@assays)) "RNA" else SeuratObject::DefaultAssay(seurat)
+  }
+  if (!assay %in% names(seurat@assays)) {
+    stop("Assay '", assay, "' not found. Available: ", paste(names(seurat@assays), collapse = ", "))
+  }
 
-  genes <- data.frame(gene = rownames(seurat)) %>% mutate(geneID = gsub("^.*\\.", "", gene))
+  genes <- data.frame(gene = rownames(seurat[[assay]])) %>% mutate(geneID = gsub("^.*\\.", "", gene))
   matched_genes <- if(all(grepl("^ENSG", gene_list))) genes[genes$gene %in% gene_list, ] else genes[genes$geneID %in% gene_list | genes$gene %in% gene_list, ]
-  if (nrow(matched_genes) == 0) stop("No matching genes found in the Seurat object.")
+  if (nrow(matched_genes) == 0) stop("No matching genes found in assay '", assay, "'.")
+
+  seuratDat <- .avg_get_data(seurat, assay, matched_genes$gene)
 
   logNormExpres <- as.data.frame(t(as.matrix(seuratDat[matched_genes$gene, ]))) %>%
     mutate(cell = rownames(.)) %>%
